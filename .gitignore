@@ -1,0 +1,40 @@
+# === ENTORNOS VIRTUALES (Python) ===
+.venv/
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# === ENTORNO DE NODE / REACT ===
+node_modules/
+dist/
+build/
+*.log
+
+# === ARCHIVOS DE CONFIGURACIÓN LOCAL ===
+*.sqlite3
+.env.local
+.env.development
+.env.production
+.DS_Store
+
+# === CONFIGURACIÓN DEL EDITOR ===
+.vscode/
+.idea/
+
+# === ARCHIVOS DE SISTEMA ===
+Thumbs.db
+desktop.ini
+
+# === TESTS / COVERAGE ===
+.coverage
+pytest_cache/
+htmlcov/
+
+# === BACKEND BUILD ===
+*.egg-info/
+*.spec
+
+# === FRONTEND BUILD ===
+*.cache/
