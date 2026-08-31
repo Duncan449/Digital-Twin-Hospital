@@ -1,59 +1,18 @@
-from fastapi import FastAPI
-from app.config.database import db
-from app.routes import (
-    usuarioRoutes,
-    categoriaRoutes,
-    proveedorRoutes,
-    almacenRoutes,
-    productoRoutes,
-    stock_almacenRoutes,
-    movimiento_inventarioRoutes,
-    authRoutes,
-    reporteRoutes
-)
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
-app = FastAPI()
+from app.database import get_db
 
-origins = [
-    "http://localhost",
-    "http://localhost:5173",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,  # Importante para JWT
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app = FastAPI(title="Sistema de Monitorización Sanitaria - Digital Twin")
 
 
-@app.on_event("startup")
-async def startup():
-    try:
-        await db.connect()
-        print("✅ Conexión exitosa con la BD ")
-    except Exception as e:
-        print(f"❌Error al conectarse a la base de datos: {e}")
-
-
-@app.on_event("shutdown")
-async def shutdown():
-    await db.disconnect()
-
-
-@app.get("/")
-async def root():
-    return {"message": "Bienvenidos a nuestro Sistema de gestión de inventario"}
-
-
-app.include_router(authRoutes.router, prefix="/auth", tags=["Autenticación"])
-app.include_router(usuarioRoutes.router, prefix="/usuarios", tags=["Usuarios"])
-app.include_router(proveedorRoutes.router, prefix="/proveedores", tags=["Proveedores"])
-app.include_router(categoriaRoutes.router, prefix="/categorias", tags=["Categorias"])
-app.include_router(almacenRoutes.router, prefix="/almacenes", tags=["Almacenes"])
-app.include_router(productoRoutes.router, prefix="/productos", tags=["Productos"])
-app.include_router(stock_almacenRoutes.router, prefix="/stock_almacen", tags=["Stock"])
-app.include_router(movimiento_inventarioRoutes.router, prefix="/movimientos", tags=["Movimientos Inventario"])
-app.include_router(reporteRoutes.router, prefix="/reportes", tags=["Reportes"])
+@app.get("/salud")
+async def salud(db: AsyncSession = Depends(get_db)):
+    """
+    Endpoint de diagnóstico: confirma que FastAPI puede conectarse a Neon.
+    "SELECT 1" es la forma estándar de chequear que una conexión a la
+    base está viva, sin depender de que exista ninguna tabla todavía.
+    """
+    resultado = await db.execute(text("SELECT 1"))
+    return {"estado": "ok", "conexion_db": resultado.scalar() == 1}
