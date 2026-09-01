@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
+from app.config.database import get_db
 
 app = FastAPI(title="Sistema de Monitorización Sanitaria - Digital Twin")
 

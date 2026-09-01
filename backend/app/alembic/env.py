@@ -5,7 +5,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.config import settings
+from app.config.config import settings
 from app.models import Base  # importa todos los modelos ya registrados
 
 config = context.config
@@ -13,12 +13,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# target_metadata es lo que Alembic compara contra el estado real de la
-# base para armar las migraciones automáticas (--autogenerate).
+# target_metadata es lo que Alembic compara contra el estado real de la base para armar las migraciones automáticas (--autogenerate).
 target_metadata = Base.metadata
 
-# Inyectamos la URL real desde nuestro .env en vez de tenerla hardcodeada
-# en alembic.ini.
+# Inyectamos la URL real desde nuestro .env 
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 
@@ -34,7 +32,7 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
-def do_run_migrations(connection) -> None:
+def do_run_migrations(connection) -> None: # Esta función se llama desde run_migrations_online() y hace el trabajo real de aplicar las migraciones en la base.
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
         context.run_migrations()
