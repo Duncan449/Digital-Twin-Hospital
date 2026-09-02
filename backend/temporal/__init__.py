@@ -1,0 +1,1 @@
+# Vacío por ahora. Hace que Python trate esta carpeta como un paquete, permitiendo imports.
