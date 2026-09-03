@@ -18,8 +18,17 @@ class PacienteCrear(BaseModel):
 
 class PacienteActualizar(BaseModel):
     """Para actualizaciones administrativas (PATCH). Todo opcional:
-    se actualiza solo lo que venga en el body."""
+    se actualiza solo lo que venga en el body.
 
+    Incluye tanto datos operativos (sala, cama, genero) como de identidad
+    (nombre, apellido, documento, fecha_nacimiento) para casos de
+    corrección de errores de tipeo. Todo cambio queda registrado en
+    la tabla eventos para trazabilidad."""
+
+    nombre: str | None = None
+    apellido: str | None = None
+    documento: str | None = None
+    fecha_nacimiento: date | None = None
     sala: str | None = None
     cama: str | None = None
     genero: str | None = None
