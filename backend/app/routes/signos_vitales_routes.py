@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_db
-from app.schemas.signos_vitales import SignoVitalCrear, SignoVitalRespuesta
+from app.schemas.signos_vitales import (
+    AlertaResumen,
+    SignoVitalCrear,
+    SignoVitalRegistradoRespuesta,
+    SignoVitalRespuesta,
+)
 from app.services.signos_vitales_service import (
     listar_signos_vitales_paciente,
     registrar_signo_vital,
@@ -16,7 +21,7 @@ router = APIRouter(
 
 
 @router.post(
-    "", response_model=SignoVitalRespuesta, status_code=status.HTTP_201_CREATED
+    "", response_model=SignoVitalRegistradoRespuesta, status_code=status.HTTP_201_CREATED
 )
 async def registrar_signo_vital_endpoint(
     paciente_id: uuid.UUID,
@@ -24,11 +29,20 @@ async def registrar_signo_vital_endpoint(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Registra una medición de signo vital para un paciente.
-
-    Todavía no se integró el motor de detección de anomalías.
+    Registra una medición y evalúa su severidad con el motor de
+    detección. Genera un Evento siempre, y una Alerta si la severidad
+    es "precaucion" o "critica".
     """
-    return await registrar_signo_vital(db, paciente_id, datos)
+    resultado = await registrar_signo_vital(db, paciente_id, datos)
+    return SignoVitalRegistradoRespuesta(
+        signo_vital=SignoVitalRespuesta.model_validate(resultado["signo_vital"]),
+        severidad_calculada=resultado["severidad_calculada"],
+        alerta=(
+            AlertaResumen.model_validate(resultado["alerta"])
+            if resultado["alerta"] is not None
+            else None
+        ),
+    )
 
 
 @router.get("", response_model=list[SignoVitalRespuesta])
