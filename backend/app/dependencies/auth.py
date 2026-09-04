@@ -9,7 +9,7 @@ from app.core.security import decodificar_token
 from app.models.usuarios import Usuario
 from app.services.usuarios_service import obtener_usuario_por_id
 
-# OAuth2PasswordBearer no hace magia: solo le dice a FastAPI DÓNDE espera
+# OAuth2PasswordBearer le dice a FastAPI DÓNDE espera
 # encontrar el token (header "Authorization: Bearer <token>") y qué endpoint
 # documentar en Swagger como el que emite ese token. tokenUrl apunta a la
 # ruta de login que armamos en el próximo paso.

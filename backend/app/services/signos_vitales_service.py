@@ -6,21 +6,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.clinico import SignoVital, TipoSignoVital
 from app.schemas.signos_vitales import SignoVitalCrear
+from app.services.deteccion import procesar_nueva_medicion
 from app.services.pacientes_service import obtener_paciente
 
 
 async def registrar_signo_vital(
     db: AsyncSession, paciente_id: uuid.UUID, datos: SignoVitalCrear
-) -> SignoVital:
+) -> dict:
     """
-    Registra una medición de signo vital para un paciente.
+    Registra una medición de signo vital y ejecuta el motor de detección
+    de severidad sobre esa medición.
 
-    Por ahora no integra el motor de detección de anomalías, ni genera alertas. Solo guarda la medición en la base de datos.
+    Todo (medición + evento + alerta + digital twin) se guarda en una
+    sola transacción atómica: si algo falla en el medio, no queda una
+    medición guardada sin su evaluación de severidad correspondiente.
     """
-    # Confirma que el paciente existe, lanza 404 si no lo encuentra).
-    await obtener_paciente(db, paciente_id)
+    await obtener_paciente(db, paciente_id)  # 404 si no existe
 
-    # Confirma que el tipo de signo vital existe 
     tipo = await db.get(TipoSignoVital, datos.tipo_signo_id)
     if tipo is None:
         raise HTTPException(
@@ -36,9 +38,28 @@ async def registrar_signo_vital(
         origen=datos.origen,
     )
     db.add(nuevo_signo)
+    await db.flush()  # asigna medido_en antes de evaluar la severidad
+
+    # --- Punto de integración del motor de detección ---
+    resultado_deteccion = await procesar_nueva_medicion(
+        db=db,
+        paciente_id=paciente_id,
+        tipo_signo_id=datos.tipo_signo_id,
+        valor=datos.valor,
+    )
+
     await db.commit()
     await db.refresh(nuevo_signo)
-    return nuevo_signo
+
+    alerta = resultado_deteccion["alerta"]
+    if alerta is not None:
+        await db.refresh(alerta)
+
+    return {
+        "signo_vital": nuevo_signo,
+        "severidad_calculada": resultado_deteccion["severidad"],
+        "alerta": alerta,
+    }
 
 
 async def listar_signos_vitales_paciente(
