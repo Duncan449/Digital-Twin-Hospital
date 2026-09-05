@@ -59,7 +59,7 @@ class DigitalTwin(Base):
         pg_enum(NivelSeveridad, "nivel_severidad"), default=NivelSeveridad.normal
     )
     ultima_actualizacion: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     creado_en: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
