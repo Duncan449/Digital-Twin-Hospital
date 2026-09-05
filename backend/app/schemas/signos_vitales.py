@@ -35,6 +35,7 @@ class AlertaResumen(BaseModel):
     severidad: NivelSeveridad
     estado: EstadoAlerta
     valor_detectado: Decimal
+    normalizada_en: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -32,6 +32,15 @@ def evaluar_severidad(valor: Decimal, tipo_signo: TipoSignoVital) -> NivelSeveri
     return NivelSeveridad.critica
 
 
+# Estados de Alerta que consideramos "en curso" para efectos del motor de
+# detección: mientras la alerta esté en cualquiera de estos, nos importa
+# seguir reflejando ahí la severidad más reciente y seguir señalizando su
+# AlertaWorkflow. Solo "resuelta" (via Intervencion) saca a una alerta de
+# este radar -- a partir de ahí, una medición fuera de rango para el mismo
+# paciente + tipo de signo abre una Alerta NUEVA.
+ESTADOS_ALERTA_EN_CURSO = (EstadoAlerta.activa, EstadoAlerta.en_atencion)
+
+
 async def procesar_nueva_medicion(
     db: AsyncSession,
     paciente_id: uuid.UUID,
@@ -47,16 +56,33 @@ async def procesar_nueva_medicion(
     Maneja las CONSECUENCIAS de la medición:
       1. Calcula la severidad con evaluar_severidad().
       2. Deja SIEMPRE un Evento (bitácora).
-      3. Si la severidad no es "normal", crea una Alerta nueva o
-         actualiza la que ya esté activa para ese paciente + tipo de
-         signo (evita duplicar alertas por la misma causa; la urgencia
-         queda reflejada en Alerta.severidad, que puede ser "precaucion"
-         o "critica").
-      4. Actualiza digital_twins.severidad_actual SOLO si cambió.
+      3. Busca si hay una Alerta en curso para ese paciente + tipo de
+         signo (ESTADOS_ALERTA_EN_CURSO), sin importar si la medición
+         actual dio normal o no:
+           - Si la severidad NO es normal: crea una Alerta nueva, o
+             actualiza la severidad/valor de la que ya estaba en curso
+             (evita duplicar alertas por la misma causa).
+           - Si la severidad SÍ es normal y había una alerta en curso:
+             NO tocamos Alerta.severidad acá. Eso es a propósito --
+             decidir si el signo se "normalizó" de verdad (sostenido 10
+             segundos seguidos, no solo esta medición puntual) es
+             responsabilidad del AlertaWorkflow de Temporal, que
+             persiste el cambio via la Activity marcar_alerta_normalizada
+             cuando corresponde. Este módulo solo devuelve la alerta
+             para que el caller la señalice.
+           - Si la severidad es normal y NO había alerta en curso, no
+             hacemos nada (nunca hubo nada que corregir).
+      4. Actualiza digital_twins.severidad_actual SOLO si cambió (este
+         campo sí refleja la severidad instantánea de la última
+         medición, a diferencia de Alerta.severidad).
 
     No hace commit: eso queda a cargo de quien llama, para que la
     medición, el evento, la alerta y el digital twin se guarden como una
     sola transacción atómica.
+
+    Devuelve, además de lo de siempre, "alerta_es_nueva": bool -- el
+    caller lo necesita para decidir si tiene que ARRANCAR un
+    AlertaWorkflow nuevo o SEÑALIZAR uno que ya existe.
     """
     tipo_signo = await db.get(TipoSignoVital, tipo_signo_id)
     if tipo_signo is None:
@@ -74,17 +100,20 @@ async def procesar_nueva_medicion(
     db.add(evento)
 
     alerta = None
+    alerta_es_nueva = False
 
-    # 2. Alerta: solo si la severidad no es normal
-    if severidad != NivelSeveridad.normal:
-        alerta_existente = await db.scalar(
-            select(Alerta).where(
-                Alerta.paciente_id == paciente_id,
-                Alerta.tipo_signo_id == tipo_signo_id,
-                Alerta.estado == EstadoAlerta.activa,
-            )
+    # Buscamos la alerta en curso SIEMPRE (no solo cuando la severidad es
+    # anormal) -- es la única forma de detectar que una alerta existente
+    # necesita ser señalizada cuando el signo vuelve a rango normal.
+    alerta_existente = await db.scalar(
+        select(Alerta).where(
+            Alerta.paciente_id == paciente_id,
+            Alerta.tipo_signo_id == tipo_signo_id,
+            Alerta.estado.in_(ESTADOS_ALERTA_EN_CURSO),
         )
+    )
 
+    if severidad != NivelSeveridad.normal:
         if alerta_existente is not None:
             alerta_existente.severidad = severidad
             alerta_existente.valor_detectado = valor
@@ -96,24 +125,35 @@ async def procesar_nueva_medicion(
                 severidad=severidad,
             ))
         else:
+            nueva_alerta_id = uuid.uuid4()
             alerta = Alerta(
+                id=nueva_alerta_id,
                 paciente_id=paciente_id,
                 tipo_signo_id=tipo_signo_id,
                 severidad=severidad,
                 valor_detectado=valor,
                 estado=EstadoAlerta.activa,
-                # workflow_id_temporal se completa cuando integremos el
-                # arranque del workflow de Temporal acá.
+                # Usamos el mismo id como workflow_id de Temporal: es
+                # único por diseño (uuid4) y nos ahorra generar y
+                # trackear un identificador aparte.
+                workflow_id_temporal=str(nueva_alerta_id),
             )
             db.add(alerta)
+            alerta_es_nueva = True
             db.add(Evento(
                 paciente_id=paciente_id,
                 tipo=TipoEvento.alerta_generada,
                 descripcion=f"Alerta generada: {severidad.value}",
                 severidad=severidad,
             ))
+    elif alerta_existente is not None:
+        # Medición normal, pero hay una alerta en curso para esta misma
+        # causa: la devolvemos tal cual (sin tocar su severidad) para
+        # que el caller señalice al AlertaWorkflow y sea ÉL quien decida,
+        # tras 10 segundos sostenidos, si corresponde normalizarla.
+        alerta = alerta_existente
 
-    # 3. Digital Twin: actualizar severidad_actual solo si cambió
+    # Digital Twin: actualizar severidad_actual solo si cambió
     digital_twin = await db.scalar(
         select(DigitalTwin).where(DigitalTwin.paciente_id == paciente_id)
     )
@@ -122,4 +162,9 @@ async def procesar_nueva_medicion(
 
     await db.flush()  # deja alerta.id / evento.id disponibles sin comitear
 
-    return {"severidad": severidad, "evento": evento, "alerta": alerta}
+    return {
+        "severidad": severidad,
+        "evento": evento,
+        "alerta": alerta,
+        "alerta_es_nueva": alerta_es_nueva,
+    }

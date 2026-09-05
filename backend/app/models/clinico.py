@@ -106,6 +106,12 @@ class Alerta(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     resuelta_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Se completa cuando el AlertaWorkflow de Temporal detecta que el signo
+    # vital se sostuvo en "normal" 10 segundos seguidos. NO cierra la
+    # alerta (eso sigue dependiendo de que el personal registre una
+    # Intervencion) -- solo indica que ya no hace falta atención urgente,
+    # pero sigue pendiente de revisión.
+    normalizada_en: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     intervenciones: Mapped[list["Intervencion"]] = relationship(back_populates="alerta")
 

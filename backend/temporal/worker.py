@@ -2,14 +2,9 @@ import asyncio
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from temporal.activities import generar_saludo
-from temporal.workflows import SaludoWorkflow
-
-# Nombre de la "cola de tareas". Es como un canal: el Client publica
-# workflows en esta cola, y solo los Workers suscriptos a la misma cola
-# los recogen. Nos va a servir más adelante para separar, por ejemplo,
-# una cola de "alertas" de una cola de "notificaciones".
-TASK_QUEUE = "hospital-task-queue"
+from temporal.activities import generar_saludo, marcar_alerta_normalizada
+from temporal.shared import TASK_QUEUE
+from temporal.workflows import AlertaWorkflow, SaludoWorkflow
 
 
 async def main():
@@ -23,8 +18,8 @@ async def main():
     worker = Worker(
         client,
         task_queue=TASK_QUEUE,
-        workflows=[SaludoWorkflow],
-        activities=[generar_saludo],
+        workflows=[SaludoWorkflow, AlertaWorkflow],
+        activities=[generar_saludo, marcar_alerta_normalizada],
     )
 
     print(f"Worker escuchando en la cola '{TASK_QUEUE}'... (Ctrl+C para salir)")
