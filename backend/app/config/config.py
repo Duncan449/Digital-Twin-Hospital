@@ -14,6 +14,12 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
 
+    # --- Temporal ---
+    # Con default porque en docker-compose.yml siempre se expone en el
+    # 7233 local; solo hace falta setearlo en el .env si el server de
+    # Temporal vive en otro host (ej: en producción).
+    temporal_host: str = "localhost:7233"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 

@@ -4,6 +4,10 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.temporal_client import (
+    iniciar_alerta_workflow,
+    senalizar_alerta_workflow,
+)
 from app.models.clinico import SignoVital, TipoSignoVital
 from app.schemas.signos_vitales import SignoVitalCrear
 from app.services.deteccion import procesar_nueva_medicion
@@ -54,6 +58,26 @@ async def registrar_signo_vital(
     alerta = resultado_deteccion["alerta"]
     if alerta is not None:
         await db.refresh(alerta)
+
+        # Recién ACÁ, después del commit, tocamos Temporal: si algo de
+        # lo anterior hubiese fallado y hecho rollback, no queremos un
+        # workflow corriendo para una alerta que en Postgres nunca
+        # existió. Ambas funciones son best-effort (ver
+        # app/core/temporal_client.py): si Temporal está caído, la
+        # medición y la alerta ya quedaron guardadas igual, simplemente
+        # esa alerta no se va a auto-normalizar hasta que vuelva.
+        severidad_str = resultado_deteccion["severidad"].value
+        if resultado_deteccion["alerta_es_nueva"]:
+            await iniciar_alerta_workflow(
+                workflow_id=alerta.workflow_id_temporal,
+                alerta_id=str(alerta.id),
+                severidad_inicial=severidad_str,
+            )
+        else:
+            await senalizar_alerta_workflow(
+                workflow_id=alerta.workflow_id_temporal,
+                severidad=severidad_str,
+            )
 
     return {
         "signo_vital": nuevo_signo,
