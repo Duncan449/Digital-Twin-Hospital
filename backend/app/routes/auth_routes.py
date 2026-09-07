@@ -16,13 +16,10 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Login. Usa OAuth2PasswordRequestForm (no nuestro schema UsuarioLogin)
-    porque es el formato que espera el botón "Authorize" de Swagger y el
-    estándar OAuth2 que declaramos en esquema_oauth2 -- FastAPI arma
-    automáticamente el formulario correcto en /docs para probarlo ahí mismo.
-
-    form_data.username en este caso es el EMAIL (OAuth2 llama "username"
-    al campo, aunque nosotros lo usemos como email).
+    Login usa OAuth2PasswordRequestForm porque es el formato 
+    que espera el botón "Authorize" de Swagger y el
+    estándar OAuth2 que declaramos en esquema_oauth2.
+    form_data.username en este caso es el EMAIL
     """
     datos_login = UsuarioLogin(email=form_data.username, password=form_data.password)
     usuario = await autenticar_usuario(db, datos_login)
