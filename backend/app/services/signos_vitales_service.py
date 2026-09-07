@@ -8,6 +8,7 @@ from app.models.clinico import SignoVital, TipoSignoVital, Alerta
 from app.schemas.signos_vitales import SignoVitalCrear
 from app.services.deteccion import procesar_nueva_medicion
 from app.services.pacientes_service import obtener_paciente
+from app.websockets.eventos import publicar_evento
 
 from temporal.client import get_temporal_client
 from temporal.workflows import AlertaWorkflow
@@ -54,10 +55,36 @@ async def registrar_signo_vital(
 
     await db.commit()
     await db.refresh(nuevo_signo)
+    
+    await publicar_evento(
+        paciente_id=str(paciente_id),
+        tipo="medicion_registrada",
+        data={
+            "tipo_signo_id": str(datos.tipo_signo_id),
+            "valor": str(nuevo_signo.valor),
+            "medido_en": nuevo_signo.medido_en.isoformat(),
+            "severidad_calculada": resultado_deteccion["severidad"].value,
+        },
+    )
 
     alerta = resultado_deteccion["alerta"]
     if alerta is not None:
         await db.refresh(alerta)
+        
+        await publicar_evento(
+            paciente_id=str(paciente_id),
+            tipo=(
+                "alerta_generada"
+                if resultado_deteccion["alerta_es_nueva"]
+                else "alerta_actualizada"
+            ),
+            data={
+                "alerta_id": str(alerta.id),
+                "severidad": alerta.severidad.value,
+                "valor_detectado": str(alerta.valor_detectado),
+                "estado": alerta.estado.value,
+            },
+        )
 
         if alerta.workflow_id_temporal is None:
             await _intentar_iniciar_workflow_alerta(db, alerta)

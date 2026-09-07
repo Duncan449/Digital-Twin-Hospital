@@ -13,12 +13,6 @@ def evaluar_severidad(valor: Decimal, tipo_signo: TipoSignoVital) -> NivelSeveri
     """
     Compara un valor medido contra los 4 umbrales del tipo de signo vital
     y devuelve el nivel de severidad correspondiente.
-
-    Bandas simétricas: tanto muy bajo como muy alto es peligroso. Los
-    límites normal_min/normal_max son inclusive para "normal". Los
-    límites crítico_min/crítico_max son inclusive para "precaución"
-    (tocar justo el límite crítico todavía es precaución; "crítica" es
-    estrictamente más allá de ese límite).
     """
     if tipo_signo.rango_normal_min <= valor <= tipo_signo.rango_normal_max:
         return NivelSeveridad.normal
@@ -68,6 +62,7 @@ async def procesar_nueva_medicion(
     db.add(evento)
 
     alerta = None
+    alerta_es_nueva = False
 
     #Alerta: solo si la severidad no es normal
     if severidad != NivelSeveridad.normal:
@@ -114,4 +109,9 @@ async def procesar_nueva_medicion(
 
     await db.flush()
 
-    return {"severidad": severidad, "evento": evento, "alerta": alerta}
+    return {
+        "severidad": severidad,
+        "evento": evento,
+        "alerta": alerta,
+        "alerta_es_nueva": alerta_es_nueva,
+    }

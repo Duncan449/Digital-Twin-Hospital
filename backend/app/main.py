@@ -1,3 +1,6 @@
+import asyncio
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI
 
 from sqlalchemy import text
@@ -11,8 +14,24 @@ from app.routes.intervenciones_routes import router as intervenciones_router
 from app.routes.eventos_routes import router as eventos_router
 from app.routes.tipos_signos_vitales_routes import router as tipos_signos_vitales_router
 from app.routes.simulador_routes import router as simulador_router
+from app.websockets.gateway import router as websockets_router, escuchar_eventos_redis
 
-app = FastAPI(title="Sistema de Monitorización Sanitaria - Digital Twin")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Arranca la tarea de fondo que escucha Redis apenas levanta el
+    servidor, y la cancela cuando se apaga. Todo lo que va ANTES 
+    del 'yield' corre en el arranque; lo que va después, en el apagado.
+    """
+    tarea_redis = asyncio.create_task(escuchar_eventos_redis())
+    yield
+    tarea_redis.cancel()
+
+
+app = FastAPI(
+    title="Sistema de Monitorización Sanitaria - Digital Twin",
+    lifespan=lifespan,
+)
 
 app.include_router(pacientes_router)
 app.include_router(auth_router)
@@ -21,6 +40,8 @@ app.include_router(intervenciones_router)
 app.include_router(eventos_router)
 app.include_router(tipos_signos_vitales_router)
 app.include_router(simulador_router)
+app.include_router(websockets_router)
+
 
 @app.get("/salud")
 async def salud(db: AsyncSession = Depends(get_db)):

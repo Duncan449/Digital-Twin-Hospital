@@ -6,6 +6,8 @@ from temporalio import activity
 from app.config.database import AsyncSessionLocal
 from app.models.clinico import Alerta, Evento
 from app.models.enums import EstadoAlerta, TipoEvento
+from app.websockets.eventos import publicar_evento
+
 
 
 @activity.defn
@@ -26,6 +28,20 @@ async def notificar_resolucion(alerta_id: str, accion: str, observaciones: str |
         alerta.estado = EstadoAlerta.resuelta
         alerta.resuelta_en = datetime.now(timezone.utc)
         await db.commit()
+        
+        # Publicamos DESPUÉS del commit, con los datos ya confirmados.
+        # Este es el evento que hace visible en vivo que el sistema se
+        # recuperó tras la intervención, incluso si el Worker se había
+        # caído y recién ahora retomó el Workflow.
+        await publicar_evento(
+            paciente_id=str(alerta.paciente_id),
+            tipo="alerta_resuelta",
+            data={
+                "alerta_id": alerta_id,
+                "accion": accion,
+                "observaciones": observaciones,
+            },
+        )
 
     activity.logger.info(f"Alerta {alerta_id} resuelta en Postgres.")
     return f"Alerta {alerta_id} marcada como resuelta."
@@ -55,6 +71,12 @@ async def registrar_escalacion(alerta_id: str) -> str:
         )
         db.add(evento)
         await db.commit()
+        
+        await publicar_evento(
+            paciente_id=str(alerta.paciente_id),
+            tipo="alerta_escalada",
+            data={"alerta_id": alerta_id, "severidad": alerta.severidad.value},
+        )
 
     activity.logger.warning(f"Alerta {alerta_id} sin atender, escalando.")
     return f"Escalación registrada para alerta {alerta_id}."
