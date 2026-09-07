@@ -40,5 +40,14 @@ services:
     ports:
       - "8080:8080" # Acá entrás desde el navegador: http://localhost:8080
 
+# Bróker de mensajería para el puente Temporal Worker <-> WebSocket Gateway.
+  # No tiene nada que ver con el Postgres de Temporal ni con Neon:
+  # solo pasa mensajes efímeros, no persiste datos clínicos.
+  redis:
+    image: redis:7-alpine
+    container_name: hospital-redis
+    ports:
+      - "6379:6379"
+
 volumes:
   temporal-postgres-data:
