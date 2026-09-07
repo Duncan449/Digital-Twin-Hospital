@@ -9,6 +9,10 @@ from app.schemas.signos_vitales import SignoVitalCrear
 from app.services.deteccion import procesar_nueva_medicion
 from app.services.pacientes_service import obtener_paciente
 
+from temporal.client import get_temporal_client
+from temporal.workflows import AlertaWorkflow
+
+TASK_QUEUE = "hospital-task-queue"
 
 async def registrar_signo_vital(
     db: AsyncSession, paciente_id: uuid.UUID, datos: SignoVitalCrear
@@ -55,12 +59,30 @@ async def registrar_signo_vital(
     if alerta is not None:
         await db.refresh(alerta)
 
+        if alerta.workflow_id_temporal is None:
+            await _intentar_iniciar_workflow_alerta(db, alerta)
+
     return {
         "signo_vital": nuevo_signo,
         "severidad_calculada": resultado_deteccion["severidad"],
         "alerta": alerta,
     }
 
+
+async def _intentar_iniciar_workflow_alerta(db: AsyncSession, alerta: Alerta) -> None:
+    try:
+        client = await get_temporal_client()
+        await client.start_workflow(
+            AlertaWorkflow.run,
+            str(alerta.id),
+            id=str(alerta.id),
+            task_queue=TASK_QUEUE,
+        )
+        alerta.workflow_id_temporal = str(alerta.id)
+        await db.commit()
+    except Exception as error:
+        await db.rollback()
+        print(f"No se pudo iniciar el workflow para la alerta {alerta.id}: {error}")
 
 async def listar_signos_vitales_paciente(
     db: AsyncSession, paciente_id: uuid.UUID
