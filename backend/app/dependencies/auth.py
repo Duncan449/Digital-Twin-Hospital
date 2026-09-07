@@ -27,10 +27,8 @@ async def get_current_user(
     -> busca en DB el usuario que dice ser -> lo devuelve. Si cualquier paso
     falla, corta con 401 antes de que el endpoint se ejecute.
 
-    Nota: SIEMPRE volvemos a buscar el usuario en la DB (no confiamos
-    ciegamente en lo que dice el token) para poder chequear 'activo' y traer
-    el rol/permisos actualizados -- si alguien fue desactivado hace 2 minutos,
-    su token viejo no le sigue sirviendo.
+    Nota: SIEMPRE volvemos a buscar el usuario en la DB para poder 
+    chequear 'activo' y traer el rol/permisos actualizados. 
     """
     credenciales_invalidas = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -67,12 +65,11 @@ async def get_current_user(
 def require_permiso(permiso: str):
     """
     Factory de dependencias: devuelve una dependencia específica para el
-    permiso pedido, ej: Depends(require_permiso("pacientes:crear")).
+    permiso pedido.
 
     Chequea el JSONB de Rol.permisos. Como tu rol 'admin' está cargado con
     {"todo": true} en vez de listar cada permiso, primero probamos esa
-    clave comodín antes de buscar el permiso puntual -- así no hace falta
-    mantener una lista gigante de permisos para el admin.
+    clave comodín antes de buscar el permiso puntual
     """
 
     def dependencia(usuario_actual: Usuario = Depends(get_current_user)) -> Usuario:

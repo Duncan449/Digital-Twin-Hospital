@@ -9,6 +9,7 @@ from app.routes.auth_routes import router as auth_router
 from app.routes.signos_vitales_routes import router as signos_vitales_router
 from app.routes.intervenciones_routes import router as intervenciones_router
 from app.routes.eventos_routes import router as eventos_router
+from app.routes.tipos_signos_vitales_routes import router as tipos_signos_vitales_router
 
 app = FastAPI(title="Sistema de Monitorización Sanitaria - Digital Twin")
 
@@ -17,6 +18,7 @@ app.include_router(auth_router)
 app.include_router(signos_vitales_router)
 app.include_router(intervenciones_router)
 app.include_router(eventos_router)
+app.include_router(tipos_signos_vitales_router)
 
 
 @app.get("/salud")

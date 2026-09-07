@@ -39,20 +39,14 @@ async def procesar_nueva_medicion(
     valor: Decimal,
 ) -> dict:
     """
-    Punto de entrada del motor de detección. Se llama después de que la
-    medición YA fue agregada a la sesión (no comiteada todavía) en
-    `signos_vitales` — ese registro es responsabilidad del servicio de
+    Se llama después de que la medición YA fue agregada a la sesión
+    en `signos_vitales` — ese registro es responsabilidad del servicio de
     signos vitales, no de este módulo.
 
-    Maneja las CONSECUENCIAS de la medición:
-      1. Calcula la severidad con evaluar_severidad().
-      2. Deja SIEMPRE un Evento (bitácora).
-      3. Si la severidad no es "normal", crea una Alerta nueva o
-         actualiza la que ya esté activa para ese paciente + tipo de
-         signo (evita duplicar alertas por la misma causa; la urgencia
-         queda reflejada en Alerta.severidad, que puede ser "precaucion"
-         o "critica").
-      4. Actualiza digital_twins.severidad_actual SOLO si cambió.
+    Calcula la severidad con evaluar_severidad(), deja SIEMPRE un Evento
+    Si la severidad no es "normal", crea una Alerta nueva o
+    actualiza la que ya esté activa para ese paciente + tipo de
+    signo. Actualiza digital_twins.severidad_actual SOLO si cambió.
 
     No hace commit: eso queda a cargo de quien llama, para que la
     medición, el evento, la alerta y el digital twin se guarden como una
@@ -64,7 +58,7 @@ async def procesar_nueva_medicion(
 
     severidad = evaluar_severidad(valor, tipo_signo)
 
-    # 1. Evento: bitácora, siempre se registra
+    #Evento, siempre se registra
     evento = Evento(
         paciente_id=paciente_id,
         tipo=TipoEvento.registro_signo,
@@ -75,7 +69,7 @@ async def procesar_nueva_medicion(
 
     alerta = None
 
-    # 2. Alerta: solo si la severidad no es normal
+    #Alerta: solo si la severidad no es normal
     if severidad != NivelSeveridad.normal:
         alerta_existente = await db.scalar(
             select(Alerta).where(
@@ -102,8 +96,6 @@ async def procesar_nueva_medicion(
                 severidad=severidad,
                 valor_detectado=valor,
                 estado=EstadoAlerta.activa,
-                # workflow_id_temporal se completa cuando integremos el
-                # arranque del workflow de Temporal acá.
             )
             db.add(alerta)
             db.add(Evento(
@@ -113,13 +105,13 @@ async def procesar_nueva_medicion(
                 severidad=severidad,
             ))
 
-    # 3. Digital Twin: actualizar severidad_actual solo si cambió
+    #Digital Twin: actualizar severidad_actual solo si cambió
     digital_twin = await db.scalar(
         select(DigitalTwin).where(DigitalTwin.paciente_id == paciente_id)
     )
     if digital_twin is not None and digital_twin.severidad_actual != severidad:
         digital_twin.severidad_actual = severidad
 
-    await db.flush()  # deja alerta.id / evento.id disponibles sin comitear
+    await db.flush()
 
     return {"severidad": severidad, "evento": evento, "alerta": alerta}
