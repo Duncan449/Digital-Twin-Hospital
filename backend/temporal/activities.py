@@ -40,9 +40,7 @@ async def registrar_escalacion(alerta_id: str) -> str:
 
     Reutilizamos TipoEvento.alerta_actualizada en vez de crear un tipo
     nuevo (como 'alerta_escalada'), porque agregar un valor a un ENUM
-    de Postgres requiere una migración de Alembic con ALTER TYPE. Si
-    más adelante quisieran distinguir esto de forma más prolija en el
-    dashboard, ahí es donde convendría sumar ese tipo nuevo.
+    de Postgres requiere una migración de Alembic con ALTER TYPE.
     """
     async with AsyncSessionLocal() as db:
         alerta = await db.get(Alerta, uuid.UUID(alerta_id))

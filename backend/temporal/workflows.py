@@ -21,9 +21,7 @@ class SaludoWorkflow:
         return resultado
 
 
-# Corto a propósito, para poder probar el escalado en segundos en vez de
-# esperar minutos reales. En producción, este valor pasaría a ser algo
-# como timedelta(minutes=5).
+# Intervalo corto a modo de prueba
 INTERVALO_ESCALADO = timedelta(seconds=45)
 
 
