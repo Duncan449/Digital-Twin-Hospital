@@ -52,7 +52,7 @@ async def autenticar_usuario(db: AsyncSession, datos: UsuarioLogin) -> Usuario:
 
     A propósito el error es el MISMO para "email no existe" y "password
     incorrecta": si fueran distintos, alguien podría usar el login para
-    averiguar qué emails están registrados en el sistema (user enumeration).
+    averiguar qué emails están registrados en el sistema.
     """
     usuario = await obtener_usuario_por_email(db, datos.email)
 
