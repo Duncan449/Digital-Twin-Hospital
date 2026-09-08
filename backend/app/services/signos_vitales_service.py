@@ -109,6 +109,9 @@ async def _publicar_evento_seguro(paciente_id: str, tipo: str, data: dict) -> No
 
 
 async def _intentar_iniciar_workflow_alerta(db: AsyncSession, alerta: Alerta) -> None:
+    
+    alerta_id = alerta.id  # se lee ANTES del try, mientras el objeto sigue "fresco"
+    
     try:
         client = await get_temporal_client()
         await client.start_workflow(
