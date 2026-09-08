@@ -4,7 +4,7 @@ from app.config.config import settings
 
 # echo=True imprime cada sentencia SQL que ejecuta SQLAlchemy en la consola. Eso significa que veremos en la consola cada SELECT, INSERT, UPDATE, etc. que haga nuestra app.
 # Puede ser útil mientras depuramos pero conviene apagarlo (False) en producción.
-engine = create_async_engine(settings.database_url, echo=True, pool_pre_ping=True, pool_recycle=300)
+engine = create_async_engine(settings.database_url, echo=False, pool_pre_ping=True, pool_recycle=300)
 
 # Fábrica de sesiones. expire_on_commit=False evita que SQLAlchemy invalide los objetos Python después de un commit (si no, habría que volver a consultarlos para leer sus datos después de guardar).
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False)
