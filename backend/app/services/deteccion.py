@@ -93,6 +93,7 @@ async def procesar_nueva_medicion(
                 estado=EstadoAlerta.activa,
             )
             db.add(alerta)
+            alerta_es_nueva = True
             db.add(Evento(
                 paciente_id=paciente_id,
                 tipo=TipoEvento.alerta_generada,
