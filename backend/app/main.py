@@ -15,6 +15,7 @@ from app.routes.eventos_routes import router as eventos_router
 from app.routes.tipos_signos_vitales_routes import router as tipos_signos_vitales_router
 from app.routes.simulador_routes import router as simulador_router
 from app.websockets.gateway import router as websockets_router, escuchar_eventos_redis
+from app.routes.alertas_routes import router as alertas_router, router_paciente as alertas_paciente_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,7 +42,8 @@ app.include_router(eventos_router)
 app.include_router(tipos_signos_vitales_router)
 app.include_router(simulador_router)
 app.include_router(websockets_router)
-
+app.include_router(alertas_router)
+app.include_router(alertas_paciente_router)
 
 @app.get("/salud")
 async def salud(db: AsyncSession = Depends(get_db)):
