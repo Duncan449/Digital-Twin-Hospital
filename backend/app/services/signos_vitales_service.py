@@ -55,8 +55,8 @@ async def registrar_signo_vital(
 
     await db.commit()
     await db.refresh(nuevo_signo)
-    
-    await publicar_evento(
+
+    await _publicar_evento_seguro(
         paciente_id=str(paciente_id),
         tipo="medicion_registrada",
         data={
@@ -70,8 +70,8 @@ async def registrar_signo_vital(
     alerta = resultado_deteccion["alerta"]
     if alerta is not None:
         await db.refresh(alerta)
-        
-        await publicar_evento(
+
+        await _publicar_evento_seguro(
             paciente_id=str(paciente_id),
             tipo=(
                 "alerta_generada"
@@ -94,6 +94,18 @@ async def registrar_signo_vital(
         "severidad_calculada": resultado_deteccion["severidad"],
         "alerta": alerta,
     }
+
+
+async def _publicar_evento_seguro(paciente_id: str, tipo: str, data: dict) -> None:
+    """
+    Wrapper de publicar_evento() que aísla los fallos de Redis
+    """
+    try:
+        await publicar_evento(paciente_id=paciente_id, tipo=tipo, data=data)
+    except Exception as error:
+        print(
+            f"No se pudo publicar el evento '{tipo}' en Redis (¿está caído?): {error}"
+        )
 
 
 async def _intentar_iniciar_workflow_alerta(db: AsyncSession, alerta: Alerta) -> None:
