@@ -9,6 +9,18 @@ from app.models.enums import EstadoAlerta, TipoEvento
 from app.websockets.eventos import publicar_evento
 
 
+async def _publicar_evento_seguro(paciente_id: str, tipo: str, data: dict) -> None:
+    """
+    Mismo wrapper que en signos_vitales_service.py, aísla los fallos de
+    Redis para que NUNCA hagan fallar la Activity que los llama.
+    """
+    try:
+        await publicar_evento(paciente_id=paciente_id, tipo=tipo, data=data)
+    except Exception as error:
+        print(
+            f"No se pudo publicar el evento '{tipo}' en Redis (¿está caído?): {error}"
+        )
+
 
 @activity.defn
 async def generar_saludo(nombre: str) -> str:
@@ -33,7 +45,7 @@ async def notificar_resolucion(alerta_id: str, accion: str, observaciones: str |
         # Este es el evento que hace visible en vivo que el sistema se
         # recuperó tras la intervención, incluso si el Worker se había
         # caído y recién ahora retomó el Workflow.
-        await publicar_evento(
+        await _publicar_evento_seguro(
             paciente_id=str(alerta.paciente_id),
             tipo="alerta_resuelta",
             data={
@@ -72,7 +84,7 @@ async def registrar_escalacion(alerta_id: str) -> str:
         db.add(evento)
         await db.commit()
         
-        await publicar_evento(
+        await _publicar_evento_seguro(
             paciente_id=str(alerta.paciente_id),
             tipo="alerta_escalada",
             data={"alerta_id": alerta_id, "severidad": alerta.severidad.value},
