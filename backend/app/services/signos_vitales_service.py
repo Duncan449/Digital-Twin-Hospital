@@ -8,6 +8,7 @@ from app.models.clinico import Alerta, SignoVital, TipoSignoVital
 from app.schemas.signos_vitales import SignoVitalCrear
 from app.services.deteccion import procesar_nueva_medicion
 from app.services.pacientes_service import obtener_paciente
+from app.websockets.eventos import publicar_evento
 
 from temporal.client import get_temporal_client
 from temporal.workflows import AlertaWorkflow
@@ -55,9 +56,35 @@ async def registrar_signo_vital(
     await db.commit()
     await db.refresh(nuevo_signo)
 
+    await _publicar_evento_seguro(
+        paciente_id=str(paciente_id),
+        tipo="medicion_registrada",
+        data={
+            "tipo_signo_id": str(datos.tipo_signo_id),
+            "valor": str(nuevo_signo.valor),
+            "medido_en": nuevo_signo.medido_en.isoformat(),
+            "severidad_calculada": resultado_deteccion["severidad"].value,
+        },
+    )
+
     alerta = resultado_deteccion["alerta"]
     if alerta is not None:
         await db.refresh(alerta)
+
+        await _publicar_evento_seguro(
+            paciente_id=str(paciente_id),
+            tipo=(
+                "alerta_generada"
+                if resultado_deteccion["alerta_es_nueva"]
+                else "alerta_actualizada"
+            ),
+            data={
+                "alerta_id": str(alerta.id),
+                "severidad": alerta.severidad.value,
+                "valor_detectado": str(alerta.valor_detectado),
+                "estado": alerta.estado.value,
+            },
+        )
 
         if alerta.workflow_id_temporal is None:
             await _intentar_iniciar_workflow_alerta(db, alerta)
@@ -69,7 +96,22 @@ async def registrar_signo_vital(
     }
 
 
+async def _publicar_evento_seguro(paciente_id: str, tipo: str, data: dict) -> None:
+    """
+    Wrapper de publicar_evento() que aísla los fallos de Redis
+    """
+    try:
+        await publicar_evento(paciente_id=paciente_id, tipo=tipo, data=data)
+    except Exception as error:
+        print(
+            f"No se pudo publicar el evento '{tipo}' en Redis (¿está caído?): {error}"
+        )
+
+
 async def _intentar_iniciar_workflow_alerta(db: AsyncSession, alerta: Alerta) -> None:
+    
+    alerta_id = alerta.id  # se lee ANTES del try, mientras el objeto sigue "fresco"
+    
     try:
         client = await get_temporal_client()
         await client.start_workflow(
