@@ -4,7 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.clinico import SignoVital, TipoSignoVital, Alerta
+from app.models.clinico import Alerta, SignoVital, TipoSignoVital
 from app.schemas.signos_vitales import SignoVitalCrear
 from app.services.deteccion import procesar_nueva_medicion
 from app.services.pacientes_service import obtener_paciente

@@ -3,6 +3,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.enums import NivelSeveridad
+
 
 class PacienteCrear(BaseModel):
     """Lo que el cliente manda en el POST. Sin id ni estado, que se generan automáticamente."""
@@ -34,6 +36,24 @@ class PacienteActualizar(BaseModel):
     genero: str | None = None
 
 
+class DigitalTwinRespuesta(BaseModel):
+    """
+    Espeja el modelo DigitalTwin. Va anidado dentro de PacienteRespuesta
+    en vez de tener su propio endpoint GET: así el Dashboard trae el
+    estado de severidad de TODOS los pacientes en una sola llamada
+    (GET /pacientes), en vez de tener que pedir un digital twin por
+    paciente aparte (el clásico problema N+1).
+    """
+
+    id: uuid.UUID
+    paciente_id: uuid.UUID
+    severidad_actual: NivelSeveridad
+    ultima_actualizacion: datetime
+    creado_en: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PacienteRespuesta(BaseModel):
     """Lo que la API devuelve al cliente."""
 
@@ -46,6 +66,10 @@ class PacienteRespuesta(BaseModel):
     sala: str | None
     cama: str | None
     fecha_ingreso: datetime
+    # No es Optional: la creación de un paciente SIEMPRE genera su
+    # digital twin en la misma transacción atómica (ver crear_paciente
+    # en el service), así que todo paciente que llega hasta acá tiene uno.
+    digital_twin: DigitalTwinRespuesta
 
     # Permite construir este schema directo desde un objeto SQLAlchemy
     # (paciente.nombre en vez de paciente["nombre"])
