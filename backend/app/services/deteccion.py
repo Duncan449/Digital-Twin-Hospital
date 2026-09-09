@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -8,6 +9,13 @@ from app.models.clinico import Alerta, Evento, TipoSignoVital
 from app.models.enums import EstadoAlerta, NivelSeveridad, TipoEvento
 from app.models.pacientes import DigitalTwin
 
+# Ventana de "alarm fatigue": tras resolver una alerta, le damos este
+# margen (en segundos) para que el valor asiente antes de considerar
+# que una medición fuera de rango es un problema nuevo.
+# Debe ser mayor a la duración total de la simulación de estabilización
+# automática (ver PASOS_ESTABILIZACION / INTERVALO_ESTABILIZACION_SEG
+# en temporal/activities.py) para que esta ventana la cubra por completo.
+VENTANA_SUPRESION_SEG = 60
 
 def evaluar_severidad(valor: Decimal, tipo_signo: TipoSignoVital) -> NivelSeveridad:
     """
@@ -24,6 +32,32 @@ def evaluar_severidad(valor: Decimal, tipo_signo: TipoSignoVital) -> NivelSeveri
         return NivelSeveridad.precaucion
 
     return NivelSeveridad.critica
+
+
+async def _hay_alerta_resuelta_reciente(
+    db: AsyncSession, paciente_id: uuid.UUID, tipo_signo_id: uuid.UUID
+) -> bool:
+    """
+    Busca la última Alerta resuelta para este paciente + tipo de signo y
+    devuelve True si cayó dentro de la ventana de supresión.
+    """
+    ultima_resuelta = await db.scalar(
+        select(Alerta)
+        .where(
+            Alerta.paciente_id == paciente_id,
+            Alerta.tipo_signo_id == tipo_signo_id,
+            Alerta.estado == EstadoAlerta.resuelta,
+        )
+        .order_by(Alerta.resuelta_en.desc())
+        .limit(1)
+    )
+
+    if ultima_resuelta is None or ultima_resuelta.resuelta_en is None:
+        return False
+
+    return (datetime.now(timezone.utc) - ultima_resuelta.resuelta_en) < timedelta(
+        seconds=VENTANA_SUPRESION_SEG
+    )
 
 
 async def procesar_nueva_medicion(
@@ -52,7 +86,7 @@ async def procesar_nueva_medicion(
 
     severidad = evaluar_severidad(valor, tipo_signo)
 
-    #Evento, siempre se registra
+    # Evento, siempre se registra
     evento = Evento(
         paciente_id=paciente_id,
         tipo=TipoEvento.registro_signo,
@@ -64,7 +98,7 @@ async def procesar_nueva_medicion(
     alerta = None
     alerta_es_nueva = False
 
-    #Alerta: solo si la severidad no es normal
+    # Alerta: solo si la severidad no es normal
     if severidad != NivelSeveridad.normal:
         alerta_existente = await db.scalar(
             select(Alerta).where(
@@ -84,6 +118,22 @@ async def procesar_nueva_medicion(
                 descripcion=f"Alerta actualizada a {severidad.value}",
                 severidad=severidad,
             ))
+        elif await _hay_alerta_resuelta_reciente(db, paciente_id, tipo_signo_id):
+            # Ventana de supresión activa: no generamos una alerta nueva,
+            # pero dejamos rastro en el historial de que el paciente
+            # sigue fuera de rango mientras se estabiliza.
+            db.add(
+                Evento(
+                    paciente_id=paciente_id,
+                    tipo=TipoEvento.alerta_actualizada,
+                    descripcion=(
+                        f"{tipo_signo.nombre} en {severidad.value} dentro de la "
+                        "ventana de supresión post-intervención; no se generó "
+                        "una alerta nueva."
+                    ),
+                    severidad=severidad,
+                )
+            )
         else:
             alerta = Alerta(
                 paciente_id=paciente_id,
@@ -101,7 +151,7 @@ async def procesar_nueva_medicion(
                 severidad=severidad,
             ))
 
-    #Digital Twin: actualizar severidad_actual solo si cambió
+    # Digital Twin: actualizar severidad_actual solo si cambió
     digital_twin = await db.scalar(
         select(DigitalTwin).where(DigitalTwin.paciente_id == paciente_id)
     )
