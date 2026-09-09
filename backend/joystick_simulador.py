@@ -1,8 +1,5 @@
 """
-joystick_simulador.py
-
-Simulador FÍSICO de signos vitales usando un joystick (pensado para
-Xbox, pero cualquier gamepad reconocido por el sistema operativo sirve).
+Simulador FÍSICO de signos vitales usando un joystick
 
 QUÉ HACE:
 Lee en loop el estado del joystick y, según qué botón/gatillo/cruceta
@@ -11,18 +8,11 @@ específico. Cada cierto intervalo, si el valor cambió, lo manda por
 HTTP al mismo endpoint que usa el simulador normal:
     POST /pacientes/{id}/signos-vitales
 
-Por qué funciona así (y no necesita tocar el backend):
+Por qué funciona así:
 Este script es un CLIENTE más de tu API, igual que Postman o el
 simulador de interpolación lineal que ya tenían. No sabe nada de
-Temporal, WebSockets ni el motor de detección -- todo eso ya lo
-dispara `registrar_signo_vital()` del lado del backend apenas llega
-el POST. El joystick solo decide QUÉ valor mandar y CUÁNDO.
-
-REQUISITOS PREVIOS:
-    pip install pygame httpx
-    - Backend corriendo (uvicorn, desde backend/)
-    - Un paciente ya creado en Neon (necesitás su UUID)
-    - Joystick conectado ANTES de correr el script
+Temporal, WebSockets ni el motor de detección. El joystick solo decide 
+QUÉ valor mandar y CUÁNDO.
 
 ⚠️ IMPORTANTE SOBRE LOS ÍNDICES:
 Los números de BOTON_* y EJE_* de acá abajo son los más comunes para
@@ -40,14 +30,11 @@ import uuid
 import httpx
 import pygame
 
-# ============================================================
 # CONFIGURACIÓN -- lo que más probablemente necesites ajustar
-# ============================================================
 
 BASE_URL = "http://localhost:8000"
 
-# Si True, el script solo IMPRIME qué botón/eje tocás (no manda nada
-# al backend). Útil la primera vez que corrés esto con tu control.
+# Si True, el script solo IMPRIME qué botón/eje tocas
 MODO_DEBUG = False
 
 # Índices de botones típicos de un control de Xbox en pygame (Windows/XInput)
@@ -65,9 +52,15 @@ EJE_LT = 2
 EJE_RT = 5
 UMBRAL_EJE = 0.5  # a partir de qué valor consideramos el gatillo "apretado"
 
-# Cuántos pasos hacen falta para recorrer todo el rango crítico del
-# signo vital (de mínimo a máximo). Más pasos = cambio más gradual.
+# Cuántos pasos hacen falta para recorrer el rango crítico completo del
+# signo vital (de mínimo a máximo). Solo se usa para calibrar qué tan
+# grande es cada "paso" por tick
 PASOS_RECORRIDO = 60
+
+# Piso técnico (no clínico): SignoVitalCrear exige valor > 0 en el
+# schema del backend, así que un valor <= 0 sería rechazado con un 422.
+# Este mínimo evita mandar un valor inválido, nada más.
+VALOR_MINIMO_TECNICO = 0.01
 
 # Cada cuántos segundos, como máximo, se manda una medición al backend
 # por signo vital (evita saturar con un POST por cada frame del loop).
@@ -76,10 +69,8 @@ INTERVALO_ENVIO_SEG = 0.3
 # Frecuencia del loop de lectura del joystick (Hz)
 TICK_HZ = 20
 
-
-# ============================================================
 # MAPEO: qué controles manejan qué signo vital
-# ============================================================
+
 # tipo "boton": positivo/negativo son índices de botón digital
 # tipo "eje": positivo/negativo son índices de eje analógico (gatillos)
 # tipo "hat_y": cruceta arriba (1) / abajo (-1)
@@ -197,7 +188,9 @@ def main() -> None:
             return
 
     # Valor inicial: el punto medio del rango normal de cada signo.
-    # Paso por tick: recorre todo el rango crítico en PASOS_RECORRIDO pasos.
+    # Paso por tick: se calibra sobre el tamaño del rango crítico (para
+    # que la velocidad de cambio se "sienta" parecida entre signos con
+    # escalas distintas), pero el valor en sí puede superarlo sin límite.
     valor_actual = {}
     paso = {}
     for control in CONTROLES:
@@ -224,8 +217,11 @@ def main() -> None:
 
                 if direccion != 0:
                     nuevo_valor = valor_actual[signo] + direccion * paso[signo]
-                    # Clamp: no dejamos que el valor se escape del rango crítico.
-                    nuevo_valor = max(info["critico_min"], min(info["critico_max"], nuevo_valor))
+                    # Sin techo: el valor puede subir sin límite. El único
+                    # piso es VALOR_MINIMO_TECNICO, para no violar la
+                    # regla valor > 0 del schema (no es un límite clínico,
+                    # es puramente para que el POST no sea rechazado).
+                    nuevo_valor = max(VALOR_MINIMO_TECNICO, nuevo_valor)
                     valor_actual[signo] = nuevo_valor
 
                 cambio_significativo = abs(valor_actual[signo] - ultimo_valor_enviado[signo]) > 0.05
