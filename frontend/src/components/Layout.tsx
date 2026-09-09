@@ -1,5 +1,7 @@
 import { Link, Outlet } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 
 // Layout envuelve TODAS las páginas (Dashboard y Digital Twin) con el
 // mismo header. <Outlet /> es el punto donde React Router inserta la
@@ -16,6 +18,14 @@ function Layout() {
     const intervalo = setInterval(() => setHora(new Date()), 1000);
     return () => clearInterval(intervalo);
   }, []);
+
+  const { cerrarSesion } = useAuth();
+  const navigate = useNavigate();
+
+  function manejarLogout() {
+    cerrarSesion();
+    navigate("/login");
+  }
 
   return (
     <div>
@@ -73,6 +83,23 @@ function Layout() {
         >
           {hora.toLocaleTimeString("es-AR")}
         </span>
+
+        <button
+          onClick={manejarLogout}
+          style={{
+            fontFamily: "var(--mono)",
+            fontSize: "11px",
+            letterSpacing: ".08em",
+            color: "var(--text-muted)",
+            background: "transparent",
+            border: "1px solid var(--border)",
+            borderRadius: "6px",
+            padding: "6px 12px",
+            cursor: "pointer",
+          }}
+        >
+          CERRAR SESIÓN
+        </button>
       </header>
 
       <main style={{ padding: "1rem" }}>

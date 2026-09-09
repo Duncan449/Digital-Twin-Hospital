@@ -1,18 +1,22 @@
 import { Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
 import Dashboard from "./pages/Dashboard";
 import DigitalTwinView from "./pages/DigitalTwinView";
+import Login from "./pages/Login";
 
-// Layout envuelve a las dos páginas gracias al <Route element={<Layout />}>
-// sin path propio -- eso significa "aplicá este layout a todas las rutas
-// hijas", no "esta es una ruta más". Las rutas hijas se resuelven adentro
-// del <Outlet /> de Layout.
 function App() {
   return (
     <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/pacientes/:id" element={<DigitalTwinView />} />
+      <Route path="/login" element={<Login />} />
+
+      {/* ProtectedRoute envuelve a Layout: si no hay sesión, ni
+          siquiera se monta el header ni el Outlet de adentro. */}
+      <Route element={<ProtectedRoute />}>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/pacientes/:id" element={<DigitalTwinView />} />
+        </Route>
       </Route>
     </Routes>
   );
