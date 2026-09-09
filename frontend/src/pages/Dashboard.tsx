@@ -1,11 +1,12 @@
-import { Link } from "react-router-dom";
 import { usePacientes } from "../hooks/usePacientes";
+import { useAlertas } from "../hooks/useAlertas";
+import PatientCard from "../components/PatientCard";
+import AlertasActivas from "../components/AlertasActivas";
+import "./Dashboard.css";
 
-// Todavía sin estilos ni PatientCard -- eso es Fase 2. Acá el objetivo
-// único es probar que la navegación funciona: click en un paciente
-// tiene que llevarte a /pacientes/:id con el id correcto.
 function Dashboard() {
   const { data: pacientes, loading, error } = usePacientes();
+  const { data: alertas } = useAlertas();
 
   if (loading) return <p>Cargando pacientes...</p>;
   if (error) return <p>Error: {error}</p>;
@@ -13,17 +14,12 @@ function Dashboard() {
   return (
     <div>
       <h1>Dashboard</h1>
-      <ul>
+      <AlertasActivas alertas={alertas} pacientes={pacientes} />
+      <div className="dashboard-grid">
         {pacientes.map((paciente) => (
-          <li key={paciente.id}>
-            <Link to={`/pacientes/${paciente.id}`}>
-              {paciente.nombre} {paciente.apellido} — sala{" "}
-              {paciente.sala ?? "sin asignar"} (
-              {paciente.digital_twin.severidad_actual})
-            </Link>
-          </li>
+          <PatientCard key={paciente.id} paciente={paciente} />
         ))}
-      </ul>
+      </div>
     </div>
   );
 }
