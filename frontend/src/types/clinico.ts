@@ -1,4 +1,4 @@
-// Espeja backend/app/schemas/{signos_vitales,tipos_signos_vitales,eventos}.py
+// Espeja backend/app/schemas/{signos_vitales,tipos_signos_vitales,eventos,alertas}.py
 
 import type {
   EstadoAlerta,
@@ -7,28 +7,28 @@ import type {
   TipoEvento,
 } from "./enums";
 
-// OJO con los campos Decimal (valor, rango_normal_min, etc.): acá asumo
-// que FastAPI los serializa como number. VERIFICAR en Swagger antes de
-// dar por buena esta suposición (mismo error que ya tuvimos con el
-// catálogo de tipos_signos_vitales: no asumir, confirmar). Si llegan
-// como string (ej. "98.60"), cambiar `number` por `string` acá y
-// convertir con Number(...) donde se grafique.
-
+// Los campos Decimal (valor, rangos) llegan como STRING desde la API,
+// confirmado en Swagger contra un endpoint real (ej. "rango_normal_min":
+// "60.00", con comillas). Por eso están tipados como string acá, no
+// number. Donde se necesite operar con ellos (comparar, graficar en
+// Recharts) hay que convertirlos con Number(...) en el componente/hook
+// que los consuma -- no acá, para no perder precisión de más temprano
+// de lo necesario.
 export interface TipoSignoVital {
   id: string;
   nombre: string;
   unidad: string;
-  rango_normal_min: number;
-  rango_normal_max: number;
-  rango_critico_min: number;
-  rango_critico_max: number;
+  rango_normal_min: string;
+  rango_normal_max: string;
+  rango_critico_min: string;
+  rango_critico_max: string;
 }
 
 export interface SignoVital {
   id: string;
   paciente_id: string;
   tipo_signo_id: string;
-  valor: number;
+  valor: string;
   origen: OrigenMedicion;
   medido_en: string; // ISO datetime string
 }
@@ -37,7 +37,7 @@ export interface AlertaResumen {
   id: string;
   severidad: NivelSeveridad;
   estado: EstadoAlerta;
-  valor_detectado: number;
+  valor_detectado: string;
 }
 
 // Espeja AlertaRespuesta (backend/app/schemas/alertas.py). A diferencia
@@ -49,7 +49,7 @@ export interface Alerta {
   paciente_id: string;
   tipo_signo_id: string | null;
   severidad: NivelSeveridad;
-  valor_detectado: number | null;
+  valor_detectado: string | null;
   estado: EstadoAlerta;
   workflow_id_temporal: string | null;
   creada_en: string;
