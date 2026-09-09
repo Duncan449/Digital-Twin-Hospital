@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.clinico import Evento
 from app.models.enums import EstadoPaciente, TipoEvento
@@ -49,6 +50,14 @@ async def crear_paciente(db: AsyncSession, datos: PacienteCrear) -> Paciente:
     db.add(nuevo_paciente)
     db.add(nuevo_digital_twin)
 
+    # Seteamos la relación EN MEMORIA (no dispara ningún query, es un
+    # atributo de Python) para que nuevo_paciente.digital_twin ya esté
+    # disponible al serializar la respuesta. Sin esto, PacienteRespuesta
+    # necesitaría acceder a un atributo lazy-loaded que SQLAlchemy async
+    # no puede resolver fuera de un contexto await explícito, y tira
+    # MissingGreenlet en vez de traer el dato.
+    nuevo_paciente.digital_twin = nuevo_digital_twin
+
     try:
         # Mandamos los INSERTs a la base en una sola transacción. Si algo falla, se hace rollback y no queda nada insertado.
         await db.commit()
@@ -61,7 +70,9 @@ async def crear_paciente(db: AsyncSession, datos: PacienteCrear) -> Paciente:
         )
 
     # refresh() vuelve a leer la fila desde la base para traer los valores
-    # que se generaron ahí (fecha_ingreso, creado_en, actualizado_en, estado). Sin esto, el objeto nuevo_paciente tendría esos campos como None.
+    # que se generaron ahí (fecha_ingreso, creado_en, actualizado_en, estado).
+    # Como expire_on_commit=False está seteado en el engine, esto NO pisa
+    # la relación digital_twin que ya dejamos cargada arriba.
     await db.refresh(nuevo_paciente)
     return nuevo_paciente
 
@@ -73,16 +84,32 @@ async def listar_pacientes(
     Lista pacientes filtrados por estado. Por default trae solo los
     internados, pero el frontend puede
     pedir explícitamente los dados_de_alta para una vista de historial.
+
+    selectinload trae el digital_twin de TODOS los pacientes en una
+    segunda consulta (un solo SELECT ... WHERE paciente_id IN (...)),
+    no uno por paciente. Sin esto, PacienteRespuesta no podría serializar
+    el campo digital_twin: la relación quedaría sin cargar y SQLAlchemy
+    async no puede resolverla de forma lazy al momento de armar el JSON.
     """
-    resultado = await db.execute(select(Paciente).where(Paciente.estado == estado))
+    resultado = await db.execute(
+        select(Paciente)
+        .where(Paciente.estado == estado)
+        .options(selectinload(Paciente.digital_twin))
+    )
     return list(resultado.scalars().all())
 
 
 async def obtener_paciente(db: AsyncSession, paciente_id: uuid.UUID) -> Paciente:
     """
     Busca un paciente por id. Lanza 404 si no existe.
+
+    options=[...] en db.get() hace lo mismo que selectinload en un
+    select() normal: trae el digital_twin junto con el paciente, en vez
+    de dejarlo para una carga diferida que fallaría en async.
     """
-    paciente = await db.get(Paciente, paciente_id)
+    paciente = await db.get(
+        Paciente, paciente_id, options=[selectinload(Paciente.digital_twin)]
+    )
     if paciente is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -134,6 +161,8 @@ async def actualizar_paciente(
             detail="No se pudo actualizar el paciente por un conflicto de datos.",
         )
 
+    # paciente.digital_twin ya venía cargado desde obtener_paciente() de
+    # arriba, y expire_on_commit=False evita que este refresh lo descarte.
     await db.refresh(paciente)
     return paciente
 
