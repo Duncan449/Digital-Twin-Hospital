@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +33,17 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Sistema de Monitorización Sanitaria - Digital Twin",
     lifespan=lifespan,
+)
+
+# Sin esto, el navegador bloquea cualquier fetch del frontend (Vite, en
+# otro puerto) hacia esta API, aunque el backend responda bien -- el
+# navegador ni siquiera deja que el JS del frontend LEA la respuesta.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.include_router(pacientes_router)
