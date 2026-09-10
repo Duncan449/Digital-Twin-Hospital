@@ -15,7 +15,7 @@ from app.models.pacientes import DigitalTwin
 # Debe ser mayor a la duración total de la simulación de estabilización
 # automática (ver PASOS_ESTABILIZACION / INTERVALO_ESTABILIZACION_SEG
 # en temporal/activities.py) para que esta ventana la cubra por completo.
-VENTANA_SUPRESION_SEG = 60
+VENTANA_SUPRESION_SEG = 110
 
 def evaluar_severidad(valor: Decimal, tipo_signo: TipoSignoVital) -> NivelSeveridad:
     """
