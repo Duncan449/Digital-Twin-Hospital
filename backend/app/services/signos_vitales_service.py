@@ -8,6 +8,7 @@ from app.models.clinico import Alerta, SignoVital, TipoSignoVital
 from app.schemas.signos_vitales import SignoVitalCrear
 from app.services.deteccion import procesar_nueva_medicion
 from app.services.pacientes_service import obtener_paciente
+from app.services.tipos_signos_vitales_service import obtener_tipo_signo_vital
 from app.websockets.eventos import publicar_evento
 
 from temporal.client import get_temporal_client
@@ -138,3 +139,25 @@ async def listar_signos_vitales_paciente(
         .order_by(SignoVital.medido_en.desc())
     )
     return list(resultado.scalars().all())
+
+
+async def disparar_deterioro_manual(
+    db: AsyncSession, paciente_id: uuid.UUID, tipo_signo_id: uuid.UUID
+) -> dict:
+    """
+    No registra ninguna medición ni toca el motor de detección: solo
+    valida que el paciente y el tipo de signo existan, y publica un
+    comando por el mismo canal de Redis que ya usa publicar_evento(),
+    para que monitor_continuo.py (si está corriendo) arranque el estado
+    "deterioro" para ese paciente + tipo de signo.
+    """
+    await obtener_paciente(db, paciente_id)  # 404 si no existe
+    await obtener_tipo_signo_vital(db, tipo_signo_id)  # 404 si no existe
+
+    await publicar_evento(
+        paciente_id=str(paciente_id),
+        tipo="comando_deterioro",
+        data={"tipo_signo_id": str(tipo_signo_id)},
+    )
+
+    return {"paciente_id": paciente_id, "tipo_signo_id": tipo_signo_id}

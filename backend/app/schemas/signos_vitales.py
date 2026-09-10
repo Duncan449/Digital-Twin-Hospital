@@ -50,3 +50,15 @@ class SignoVitalRegistradoRespuesta(BaseModel):
     signo_vital: SignoVitalRespuesta
     severidad_calculada: NivelSeveridad
     alerta: AlertaResumen | None = None
+
+
+class DeteriorioManualRespuesta(BaseModel):
+    """
+    Respuesta al disparar manualmente un deterioro para el monitor de
+    demo. No representa ninguna medición registrada solo confirma
+    que el comando se publicó por Redis.
+    """
+
+    mensaje: str
+    paciente_id: uuid.UUID
+    tipo_signo_id: uuid.UUID
