@@ -13,11 +13,11 @@ from app.websockets.eventos import publicar_evento
 
 # Cuántos pasos y cuánto tiempo tarda la estabilización automática que se
 # dispara tras resolver una alerta. Se mantiene corta a propósito: debe
-# entrar cómoda dentro de VENTANA_SUPRESION_SEG (deteccion.py, 60s por
+# entrar cómoda dentro de VENTANA_SUPRESION_SEG (deteccion.py, 110s por
 # defecto) para que ningún paso intermedio dispare una alerta nueva.
-# 4 pasos x 3s = ~9-12s de margen real.
-PASOS_ESTABILIZACION = 4
-INTERVALO_ESTABILIZACION_SEG = 3
+# 6 pasos x 15s = ~90s de margen real.
+PASOS_ESTABILIZACION = 6
+INTERVALO_ESTABILIZACION_SEG = 15
 
 # Referencias a las Task de estabilización en curso.
 _tareas_estabilizacion: set[asyncio.Task] = set()
