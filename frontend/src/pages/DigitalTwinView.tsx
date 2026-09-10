@@ -55,11 +55,23 @@ function DigitalTwinView() {
 
   // Agrupamos el historial plano por tipo_signo_id: sin esto no hay
   // forma de saber cuál es "la última FC" vs "la última saturación".
+  //
+  // El backend devuelve signosVitales.data en orden DESCENDENTE
+  // (medido_en DESC -- la más reciente primero; ver
+  // listar_signos_vitales_paciente en el backend). Pero tanto
+  // VitalSignCard (que toma historial[length-1] como "la última
+  // medición") como VitalSignChart (que espera orden ascendente para
+  // dibujar la línea de tiempo de izquierda a derecha) asumen lo
+  // contrario. Por eso ordenamos ASC acá, una sola vez, al armar el
+  // Map -- así ningún componente hijo tiene que reordenar por su cuenta.
   const historialPorTipo = new Map<string, SignoVital[]>();
   for (const medicion of signosVitales.data) {
     const lista = historialPorTipo.get(medicion.tipo_signo_id) ?? [];
     lista.push(medicion);
     historialPorTipo.set(medicion.tipo_signo_id, lista);
+  }
+  for (const lista of historialPorTipo.values()) {
+    lista.sort((a, b) => (a.medido_en < b.medido_en ? -1 : 1));
   }
 
   return (

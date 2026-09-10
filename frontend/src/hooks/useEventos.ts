@@ -1,7 +1,6 @@
-// frontend/src/hooks/useEventos.ts
 import { useEffect, useState } from "react";
 import type { Evento } from "../types/clinico";
-import { eventosMock } from "../mocks/clinico";
+import { apiFetch } from "../services/apiFetch";
 
 interface UseEventosResultado {
   data: Evento[];
@@ -9,38 +8,50 @@ interface UseEventosResultado {
   error: string | null;
 }
 
-const DELAY_SIMULADO_MS = 400;
-
 export function useEventos(pacienteId: string): UseEventosResultado {
   const [data, setData] = useState<Evento[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    setData([]);
+    const controlador = new AbortController();
 
-    const temporizador = setTimeout(() => {
-      // --- Hoy: mock. Mañana: ---
-      // fetch(`http://localhost:8000/pacientes/${pacienteId}/eventos`)
-      //   .then((res) => res.json())
-      //   .then((json: Evento[]) => setData(json))
-      //   .catch(() => setError("No se pudo cargar el historial de eventos."))
-      //   .finally(() => setLoading(false));
+    async function cargarEventos() {
+      setLoading(true);
+      setError(null);
+      setData([]); // limpiamos el historial del paciente anterior al cambiar de id
 
-      // El mock no viene pre-ordenado; el endpoint real sí devuelve
-      // "más reciente primero" (ver listar_eventos_paciente), así que
-      // ordenamos acá para que el mock se comporte igual.
-      const historial = eventosMock
-        .filter((e) => e.paciente_id === pacienteId)
-        .slice()
-        .sort((a, b) => (a.ocurrido_en < b.ocurrido_en ? 1 : -1));
-      setData(historial);
-      setLoading(false);
-    }, DELAY_SIMULADO_MS);
+      try {
+        const respuesta = await apiFetch(`/pacientes/${pacienteId}/eventos`, {
+          signal: controlador.signal,
+        });
 
-    return () => clearTimeout(temporizador);
+        if (!respuesta.ok) {
+          throw new Error(
+            `El servidor respondió con estado ${respuesta.status}`,
+          );
+        }
+
+        // El backend ya devuelve el historial ordenado "más reciente
+        // primero" (ORDER BY ocurrido_en DESC), que es exactamente el
+        // orden que espera EventoTimeline -- a diferencia del historial
+        // de signos vitales en DigitalTwinView, acá no hace falta
+        // reordenar nada.
+        const json: Evento[] = await respuesta.json();
+        setData(json);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        setError("No se pudo cargar el historial de eventos.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    cargarEventos();
+
+    return () => controlador.abort();
   }, [pacienteId]);
 
   return { data, loading, error };

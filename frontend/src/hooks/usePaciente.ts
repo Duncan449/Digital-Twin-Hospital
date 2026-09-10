@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Paciente } from "../types/pacientes";
-import { pacientesMock } from "../mocks/pacientes";
+import { apiFetch } from "../services/apiFetch";
 
 interface UsePacienteResultado {
   data: Paciente | null;
@@ -8,42 +8,53 @@ interface UsePacienteResultado {
   error: string | null;
 }
 
-const DELAY_SIMULADO_MS = 400;
-
-// Trae un paciente puntual COMPLETO -- incluye su digital_twin anidado,
-// porque así es como lo devuelve GET /pacientes/{id} en el backend real.
-// Esto reemplaza al viejo useDigitalTwin: antes hacía falta un hook
-// aparte para el twin porque no existía forma de pedirlo junto al
-// paciente; ahora una sola llamada trae todo lo que necesita la
-// pantalla del Digital Twin (nombre, sala, cama, y severidad_actual).
 export function usePaciente(pacienteId: string): UsePacienteResultado {
   const [data, setData] = useState<Paciente | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    setData(null); // limpiamos el paciente anterior al cambiar de id
+    const controlador = new AbortController();
 
-    const temporizador = setTimeout(() => {
-      // --- Hoy: mock. Mañana: ---
-      // fetch(`http://localhost:8000/pacientes/${pacienteId}`)
-      //   .then((res) => res.json())
-      //   .then((json: Paciente) => setData(json))
-      //   .catch(() => setError("No se pudo cargar el paciente."))
-      //   .finally(() => setLoading(false));
-      const paciente = pacientesMock.find((p) => p.id === pacienteId);
+    async function cargarPaciente() {
+      setLoading(true);
+      setError(null);
+      setData(null); // limpiamos el paciente anterior al cambiar de id
 
-      if (paciente === undefined) {
-        setError(`No se encontró un paciente con id ${pacienteId}.`);
-      } else {
-        setData(paciente);
+      try {
+        const respuesta = await apiFetch(`/pacientes/${pacienteId}`, {
+          signal: controlador.signal,
+        });
+
+        // 404 es un caso esperado acá (id inválido o paciente borrado),
+        // no un error de servidor -- lo distinguimos del resto de
+        // estados no-ok para dar un mensaje más preciso.
+        if (respuesta.status === 404) {
+          setError(`No se encontró un paciente con id ${pacienteId}.`);
+          return;
+        }
+
+        if (!respuesta.ok) {
+          throw new Error(
+            `El servidor respondió con estado ${respuesta.status}`,
+          );
+        }
+
+        const json: Paciente = await respuesta.json();
+        setData(json);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        setError("No se pudo cargar el paciente.");
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
-    }, DELAY_SIMULADO_MS);
+    }
 
-    return () => clearTimeout(temporizador);
+    cargarPaciente();
+
+    return () => controlador.abort();
   }, [pacienteId]);
 
   return { data, loading, error };

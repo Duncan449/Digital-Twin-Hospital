@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { SignoVital } from "../types/clinico";
-import { signosVitalesMock } from "../mocks/clinico";
+import { apiFetch } from "../services/apiFetch";
 
 interface UseSignosVitalesResultado {
   data: SignoVital[];
@@ -8,11 +8,6 @@ interface UseSignosVitalesResultado {
   error: string | null;
 }
 
-const DELAY_SIMULADO_MS = 400;
-
-// Igual que useDigitalTwin: recibe pacienteId como parámetro, porque el
-// historial de mediciones es siempre "de un paciente puntual", nunca
-// de todos a la vez (a diferencia de usePacientes, que sí trae la lista completa).
 export function useSignosVitales(
   pacienteId: string,
 ): UseSignosVitalesResultado {
@@ -21,25 +16,40 @@ export function useSignosVitales(
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    setData([]); // limpiamos el historial del paciente anterior al cambiar de id
+    const controlador = new AbortController();
 
-    const temporizador = setTimeout(() => {
-      // --- Hoy: mock. Mañana: ---
-      // fetch(`http://localhost:8000/pacientes/${pacienteId}/signos-vitales`)
-      //   .then((res) => res.json())
-      //   .then((json: SignoVital[]) => setData(json))
-      //   .catch(() => setError("No se pudo cargar el historial de signos vitales."))
-      //   .finally(() => setLoading(false));
-      const historial = signosVitalesMock.filter(
-        (s) => s.paciente_id === pacienteId,
-      );
-      setData(historial);
-      setLoading(false);
-    }, DELAY_SIMULADO_MS);
+    async function cargarSignosVitales() {
+      setLoading(true);
+      setError(null);
+      setData([]); // limpiamos el historial del paciente anterior al cambiar de id
 
-    return () => clearTimeout(temporizador);
+      try {
+        const respuesta = await apiFetch(
+          `/pacientes/${pacienteId}/signos-vitales`,
+          { signal: controlador.signal },
+        );
+
+        if (!respuesta.ok) {
+          throw new Error(
+            `El servidor respondió con estado ${respuesta.status}`,
+          );
+        }
+
+        const json: SignoVital[] = await respuesta.json();
+        setData(json);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        setError("No se pudo cargar el historial de signos vitales.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    cargarSignosVitales();
+
+    return () => controlador.abort();
   }, [pacienteId]);
 
   return { data, loading, error };
