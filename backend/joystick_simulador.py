@@ -48,7 +48,7 @@ BOTON_RB = 5
 # Los gatillos (LT/RT) casi siempre se leen como EJES analógicos, no
 # como botones digitales. En XInput suelen ser el eje 2 (LT) y 5 (RT),
 # con valores de -1 (soltado) a 1 (apretado a fondo).
-EJE_LT = 2
+EJE_LT = 4
 EJE_RT = 5
 UMBRAL_EJE = 0.5  # a partir de qué valor consideramos el gatillo "apretado"
 

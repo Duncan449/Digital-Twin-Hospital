@@ -63,7 +63,7 @@ class EstadoPar:
     estado: str = "normal"  # normal | deteriorando | esperando | pausado
     objetivo: float = 0.0
     reanudar_en: float = 0.0  # timestamp (time.monotonic()) hasta el que queda pausado
-
+    pendiente_deterioro: bool = False  # comando manual recibido durante "pausado", a disparar cuando termine
 
 def _arrancar_deterioro(par: EstadoPar) -> None:
     '''
@@ -133,6 +133,10 @@ async def _loop_par(cliente: httpx.AsyncClient, par: EstadoPar) -> None:
             if ahora < par.reanudar_en:
                 continue
             par.estado = "normal"
+
+            if par.pendiente_deterioro:
+                par.pendiente_deterioro = False
+                _arrancar_deterioro(par)  # deja par.estado en "deteriorando" para este mismo tick
 
         if par.estado == "normal":
             if random.random() < PROBABILIDAD_DETERIORO_ESPONTANEO:
@@ -217,8 +221,22 @@ async def _escuchar_comandos(
 
         if tipo == "comando_deterioro":
             par = pares.get((paciente_id, data.get("tipo_signo_id")))
-            if par is not None and par.estado in ("normal", "pausado"):
+            if par is None:
+                continue
+            if par.estado == "normal":
                 _arrancar_deterioro(par)
+            elif par.estado == "pausado":
+                par.pendiente_deterioro = True
+                print(
+                    f"[{par.paciente_nombre} / {par.tipo_signo_nombre}] comando de "
+                    "deterioro encolado: se disparará automáticamente cuando "
+                    "termine la pausa post-resolución."
+                )
+            else:
+                print(
+                    f"[{par.paciente_nombre} / {par.tipo_signo_nombre}] comando de "
+                    f"deterioro ignorado: ya está en '{par.estado}'."
+                )
 
         elif tipo == "alerta_resuelta":
             await _resolver_par_por_alerta(
