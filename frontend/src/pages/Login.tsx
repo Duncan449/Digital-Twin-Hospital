@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { ErrorDeRed } from "../services/auth";
 import "./Login.css";
 
 function Login() {
@@ -19,10 +20,14 @@ function Login() {
     try {
       await iniciarSesion(email, password);
       navigate("/");
-    } catch {
-      // Mismo mensaje genérico que usa el backend (autenticar_usuario):
-      // no distinguir "email no existe" de "password incorrecta".
-      setError("Email o contraseña incorrectos.");
+    } catch (err) {
+      // ErrorDeRed trae su propio mensaje (conexión/CORS/servidor caído);
+      // cualquier otra cosa (ErrorCredenciales u otro) es un 401 real.
+      setError(
+        err instanceof ErrorDeRed
+          ? err.message
+          : "Email o contraseña incorrectos.",
+      );
     } finally {
       setEnviando(false);
     }

@@ -7,6 +7,7 @@ import {
 } from "react";
 import { decodificarToken } from "../utils/jwt";
 import { iniciarSesion as iniciarSesionApi } from "../services/auth";
+import { CLAVE_TOKEN } from "../services/config";
 
 interface AuthContextValue {
   token: string | null;
@@ -18,27 +19,21 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
-const CLAVE_STORAGE = "dth_token";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [usuarioId, setUsuarioId] = useState<string | null>(null);
-  // 'cargando' evita que, en el primer render, ProtectedRoute mande a
-  // /login antes de que terminemos de leer localStorage.
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
-    const tokenGuardado = localStorage.getItem(CLAVE_STORAGE);
+    const tokenGuardado = localStorage.getItem(CLAVE_TOKEN);
     if (tokenGuardado) {
       const payload = decodificarToken(tokenGuardado);
-      // Si el token guardado ya expiró (recordá: son 30 min sin
-      // refresh), lo descartamos acá en vez de dejar que el usuario
-      // navegue con un token que el backend igual va a rechazar con 401.
       if (payload && payload.exp * 1000 > Date.now()) {
         setToken(tokenGuardado);
         setUsuarioId(payload.sub);
       } else {
-        localStorage.removeItem(CLAVE_STORAGE);
+        localStorage.removeItem(CLAVE_TOKEN);
       }
     }
     setCargando(false);
@@ -47,13 +42,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function iniciarSesion(email: string, password: string) {
     const { access_token } = await iniciarSesionApi(email, password);
     const payload = decodificarToken(access_token);
-    localStorage.setItem(CLAVE_STORAGE, access_token);
+    localStorage.setItem(CLAVE_TOKEN, access_token);
     setToken(access_token);
     setUsuarioId(payload?.sub ?? null);
   }
 
   function cerrarSesion() {
-    localStorage.removeItem(CLAVE_STORAGE);
+    localStorage.removeItem(CLAVE_TOKEN);
     setToken(null);
     setUsuarioId(null);
   }

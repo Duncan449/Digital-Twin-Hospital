@@ -1,14 +1,18 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { usePaciente } from "../hooks/usePaciente";
 import { useSignosVitales } from "../hooks/useSignosVitales";
 import { useTiposSignosVitales } from "../hooks/useTiposSignosVitales";
 import { useEventos } from "../hooks/useEventos";
+import { useAlertas } from "../hooks/useAlertas";
 import SeveridadBadge from "../components/SeveridadBadge";
 import VitalSignCard from "../components/VitalSignCard";
 import VitalSignChart from "../components/VitalSignChart";
 import EventoTimeline from "../components/EventoTimeline";
+import IntervencionModal from "../components/IntervencionModal";
 import { BORDE_SEVERIDAD, GLOW_SEVERIDAD } from "../constants/severidad";
 import type { SignoVital } from "../types/clinico";
+import type { IntervencionRespuesta } from "../types/intervencion";
 
 function DigitalTwinView() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +22,15 @@ function DigitalTwinView() {
   const signosVitales = useSignosVitales(pacienteId);
   const tiposSignosVitales = useTiposSignosVitales();
   const eventos = useEventos(pacienteId);
+  const alertas = useAlertas();
+
+  const [modalAbierto, setModalAbierto] = useState(false);
+  // Optimista: hasta que la Fase 5 conecte el WS "alerta_resuelta", así
+  // ocultamos el botón apenas se confirma la intervención sin esperar
+  // a que el backend termine de resolver la alerta de forma asíncrona.
+  const [alertasIntervenidas, setAlertasIntervenidas] = useState<Set<string>>(
+    new Set(),
+  );
 
   if (paciente.loading)
     return <p style={{ padding: 22 }}>Cargando paciente...</p>;
@@ -26,6 +39,19 @@ function DigitalTwinView() {
   if (!paciente.data) return null;
 
   const severidad = paciente.data.digital_twin.severidad_actual;
+
+  const alertaActiva = alertas.data.find(
+    (a) => a.paciente_id === pacienteId && !alertasIntervenidas.has(a.id),
+  );
+
+  function manejarExitoIntervencion(resultado: IntervencionRespuesta) {
+    setAlertasIntervenidas((previas) => {
+      const siguientes = new Set(previas);
+      siguientes.add(resultado.alerta_id);
+      return siguientes;
+    });
+    setModalAbierto(false);
+  }
 
   // Agrupamos el historial plano por tipo_signo_id: sin esto no hay
   // forma de saber cuál es "la última FC" vs "la última saturación".
@@ -88,7 +114,31 @@ function DigitalTwinView() {
             {paciente.data.cama ?? "-"}
           </span>
         </div>
-        <div style={{ marginLeft: "auto" }}>
+        <div
+          style={{
+            marginLeft: "auto",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          {alertaActiva && (
+            <button
+              onClick={() => setModalAbierto(true)}
+              style={{
+                padding: "9px 16px",
+                borderRadius: 9,
+                border: "1px solid var(--border-critica)",
+                background: "var(--tint-critica)",
+                color: "var(--color-critica)",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Intervenir alerta activa
+            </button>
+          )}
           <SeveridadBadge severidad={severidad} />
         </div>
       </div>
@@ -205,6 +255,16 @@ function DigitalTwinView() {
           )}
         </div>
       </div>
+
+      {alertaActiva && (
+        <IntervencionModal
+          abierto={modalAbierto}
+          alerta={alertaActiva}
+          paciente={paciente.data}
+          onCerrar={() => setModalAbierto(false)}
+          onExito={manejarExitoIntervencion}
+        />
+      )}
     </div>
   );
 }
