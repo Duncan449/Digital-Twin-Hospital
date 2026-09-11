@@ -25,8 +25,11 @@ export function useEventos(pacienteId: string): UseEventosResultado {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const cargarEventos = useCallback(
-    async (signal?: AbortSignal) => {
-      setLoading(true);
+    // mostrarCarga=false para los refetches disparados por WS: no queremos
+    // que el spinner tape el timeline en cada ráfaga, solo en el primer
+    // fetch al montar (o al cambiar de paciente).
+    async (signal?: AbortSignal, mostrarCarga = true) => {
+      if (mostrarCarga) setLoading(true);
       setError(null);
 
       try {
@@ -40,17 +43,25 @@ export function useEventos(pacienteId: string): UseEventosResultado {
           );
         }
 
-        // El backend ya devuelve el historial "más reciente primero",
-        // que es exactamente el orden que espera EventoTimeline.
         const json: Evento[] = await respuesta.json();
-        setData(json);
+
+        // Merge por id en vez de reemplazo total: los eventos que ya
+        // teníamos conservan su misma referencia de objeto, así que
+        // React no vuelve a renderizar esas filas -- solo agrega las
+        // nuevas arriba. Esto es lo que evita el "parpadeo": nada que
+        // ya estaba en pantalla se toca, solo se inserta lo nuevo.
+        setData((anterior) => {
+          const idsConocidos = new Set(anterior.map((e) => e.id));
+          const nuevos = json.filter((e) => !idsConocidos.has(e.id));
+          return nuevos.length > 0 ? [...nuevos, ...anterior] : anterior;
+        });
       } catch (err) {
         if (err instanceof DOMException && err.name === "AbortError") {
           return;
         }
         setError("No se pudo cargar el historial de eventos.");
       } finally {
-        setLoading(false);
+        if (mostrarCarga) setLoading(false);
       }
     },
     [pacienteId],
@@ -75,7 +86,7 @@ export function useEventos(pacienteId: string): UseEventosResultado {
 
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => {
-        cargarEventos();
+        cargarEventos(undefined, false); // background: sin spinner
       }, DEMORA_DEBOUNCE_MS);
     });
   }, [suscribir, pacienteId, cargarEventos]);
