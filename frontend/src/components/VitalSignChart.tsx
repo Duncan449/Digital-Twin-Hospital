@@ -15,16 +15,39 @@ interface VitalSignChartProps {
   historial: SignoVital[]; // ya filtrado por tipo, orden ascendente por medido_en
 }
 
-const formateaHora = (iso: string) =>
-  new Date(iso).toLocaleTimeString("es-AR", {
+// Para los TICKS del eje: alcanza con hora:minuto, 
+// no hace falta más precisión ahí.
+const formateaTick = (timestampMs: number) =>
+  new Date(timestampMs).toLocaleTimeString("es-AR", {
     hour: "2-digit",
     minute: "2-digit",
   });
 
+// Para el TOOLTIP (un solo punto bajo el cursor): acá sí
+// necesitamos los segundos -- es lo que permite distinguir mediciones
+// que caen dentro del mismo minuto (típico durante una simulación con
+// intervalo_segundos chico, donde puede haber varias mediciones en los
+// mismos 60 segundos).
+const formateaTooltip = (timestampMs: number) =>
+  new Date(timestampMs).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
 function VitalSignChart({ tipo, historial }: VitalSignChartProps) {
+  // Eje X NUMÉRICO, no un string categórico: con un eje de
+  // tipo "category" (el default de Recharts si dataKey es un string),
+  // Recharts posiciona los puntos por ÍNDICE en el array, no por su
+  // valor real. Si dos mediciones caen en el mismo minuto, comparten
+  // la misma etiqueta de texto y terminan amontonadas visualmente, y el
+  // tooltip termina enganchando el punto más cercano por índice en vez
+  // del que está realmente bajo el cursor. Con un eje numérico basado
+  // en el timestamp real, cada punto tiene su posición exacta y
+  // proporcional al tiempo transcurrido -- sin colisiones posibles.
   const datos = historial.map((s) => ({
-    hora: formateaHora(s.medido_en),
-    valor: s.valor,
+    tiempo: new Date(s.medido_en).getTime(),
+    valor: Number(s.valor),
   }));
 
   return (
@@ -63,7 +86,10 @@ function VitalSignChart({ tipo, historial }: VitalSignChartProps) {
             fillOpacity={0.08}
           />
           <XAxis
-            dataKey="hora"
+            dataKey="tiempo"
+            type="number"
+            domain={["dataMin", "dataMax"]}
+            tickFormatter={formateaTick}
             stroke="#3E5271"
             tick={{ fontSize: 10, fontFamily: "'IBM Plex Mono', monospace" }}
           />
@@ -74,6 +100,7 @@ function VitalSignChart({ tipo, historial }: VitalSignChartProps) {
             width={38}
           />
           <Tooltip
+            labelFormatter={(valor) => formateaTooltip(valor as number)}
             contentStyle={{
               background: "#0C1524",
               border: "1px solid #24344F",
