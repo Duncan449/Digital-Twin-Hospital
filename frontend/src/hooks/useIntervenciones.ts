@@ -5,23 +5,6 @@ import type {
 } from "../types/intervencion";
 import { apiFetch } from "../services/apiFetch";
 
-// Genera una respuesta con el mismo shape que devolvería el backend real
-function generarMock(
-  alertaId: string,
-  datos: IntervencionCrear,
-): IntervencionRespuesta {
-  const ahora = new Date().toISOString();
-  return {
-    id: crypto.randomUUID(),
-    alerta_id: alertaId,
-    usuario_id: crypto.randomUUID(),
-    accion: datos.accion,
-    observaciones: datos.observaciones,
-    iniciada_en: ahora,
-    finalizada_en: ahora,
-  };
-}
-
 interface UseIntervencionesResultado {
   enviarIntervencion: (
     alertaId: string,
@@ -46,24 +29,28 @@ export function useIntervenciones(): UseIntervencionesResultado {
     setEnviando(true);
     setError(null);
     try {
-      // --- MOCK (activo) ---
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      // El schema Pydantic (accion: str) NO rechaza un string vacío --
+      // Pydantic v2 no valida "no vacío" salvo min_length explícito.
+      // Esta validación es la única barrera real contra una
+      // intervención sin acción, y hay que conservarla del lado del
+      // cliente aunque IntervencionModal ya deshabilite el botón en
+      // ese caso (defensa en profundidad: este hook podría reusarse
+      // en otro componente que no tenga ese mismo chequeo).
       if (!datos.accion.trim()) {
         throw new Error("La acción tomada es obligatoria.");
       }
-      return generarMock(alertaId, datos);
 
-      // --- FETCH REAL (Fase 4: descomentar, borrar el bloque MOCK de arriba) ---
-      // apiFetch ya antepone API_URL y agrega el header Authorization.
-      // const respuesta = await apiFetch(`/alertas/${alertaId}/intervenciones`, {
-      //   method: "POST",
-      //   headers: { "Content-Type": "application/json" },
-      //   body: JSON.stringify(datos),
-      // });
-      // if (!respuesta.ok) {
-      //   throw new Error("No se pudo registrar la intervención.");
-      // }
-      // return (await respuesta.json()) as IntervencionRespuesta;
+      const respuesta = await apiFetch(`/alertas/${alertaId}/intervenciones`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(datos),
+      });
+
+      if (!respuesta.ok) {
+        throw new Error("No se pudo registrar la intervención.");
+      }
+
+      return (await respuesta.json()) as IntervencionRespuesta;
     } catch (err) {
       const mensaje =
         err instanceof Error
