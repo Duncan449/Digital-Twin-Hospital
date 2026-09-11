@@ -1,25 +1,38 @@
 import { Link, Outlet } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import SimuladorPanel, { ANCHO_PANEL_SIMULADOR } from "./SimuladorPanel";
+import { useEventosWebSocket } from "../context/EventosWebSocketContext";
 
 // Layout envuelve TODAS las páginas (Dashboard y Digital Twin) con el
 // mismo header. <Outlet /> es el punto donde React Router inserta la
-// página que corresponda según la URL -- es como un {children} pero
-// manejado por el router en vez de pasado a mano.
+// página que corresponda según la URL.
 function Layout() {
-  // Reloj en tiempo real: es la hora del NAVEGADOR, no viene del backend
-  // ni de ningún WebSocket -- se actualiza sola cada segundo, como un
-  // reloj de pared. No hay que confundirlo con "WS LIVE" del mockup, que
-  // sí dependería de la conexión real (eso queda para la Fase 5).
   const [hora, setHora] = useState(() => new Date());
   const [panelAbierto, setPanelAbierto] = useState(false);
+  // Diferencia (ms) entre la hora del servidor y la del navegador. Se
+  // actualiza con el timestamp que trae CADA mensaje WS (ver
+  // publicar_evento en el backend), no con un solo intercambio inicial.
+  const desfaseRef = useRef(0);
+  const { conectado, suscribir } = useEventosWebSocket();
 
   useEffect(() => {
-    const intervalo = setInterval(() => setHora(new Date()), 1000);
+    const intervalo = setInterval(() => {
+      setHora(new Date(Date.now() + desfaseRef.current));
+    }, 1000);
     return () => clearInterval(intervalo);
   }, []);
+
+  // Cuando no llegan eventos por un rato, el reloj sigue andando solo
+  // (el setInterval de arriba no depende de esto) -- este efecto solo
+  // corrige el desfase cada vez que hay novedades desde el backend.
+  useEffect(() => {
+    return suscribir((evento) => {
+      const horaServidor = new Date(evento.timestamp).getTime();
+      desfaseRef.current = horaServidor - Date.now();
+    });
+  }, [suscribir]);
 
   const { cerrarSesion } = useAuth();
   const navigate = useNavigate();
@@ -82,6 +95,31 @@ function Layout() {
           <span
             style={{
               marginLeft: "auto",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+            fontFamily: "var(--mono)",
+            fontSize: "10px",
+            letterSpacing: ".1em",
+            color: conectado ? "var(--color-normal)" : "var(--text-muted)",
+          }}
+        >
+          <span
+            style={{
+              width: "7px",
+              height: "7px",
+              borderRadius: "50%",
+              background: conectado
+                ? "var(--color-normal)"
+                : "var(--text-muted)",
+              boxShadow: conectado ? "0 0 8px var(--color-normal)" : "none",
+            }}
+          />
+          {conectado ? "WS LIVE" : "SIN CONEXIÓN"}
+        </span>
+
+        <span
+          style={{
               fontFamily: "var(--mono)",
               fontSize: "15px",
               fontWeight: 600,
