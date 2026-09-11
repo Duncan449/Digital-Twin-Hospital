@@ -1,46 +1,53 @@
 import { useState } from "react";
 import { useIntervenciones } from "../hooks/useIntervenciones";
-import type { IntervencionRespuesta } from "../types/intervencion";
 import type { Alerta } from "../types/clinico";
 import type { Paciente } from "../types/pacientes";
 
 interface IntervencionModalProps {
   abierto: boolean;
-  alerta: Alerta;
+  alertas: Alerta[]; // TODAS las alertas activas del paciente, no una sola
   paciente: Paciente;
   onCerrar: () => void;
-  onExito: (resultado: IntervencionRespuesta) => void;
+  // Se llama con los ids de alerta que SÍ se resolvieron, aunque no
+  // hayan sido todas -- así el padre puede actualizar el estado
+  // optimista de forma parcial si hubo fallos.
+  onExito: (alertaIdsResueltos: string[]) => void;
 }
 
 function IntervencionModal({
   abierto,
-  alerta,
+  alertas,
   paciente,
   onCerrar,
   onExito,
 }: IntervencionModalProps) {
   const [accion, setAccion] = useState("");
   const [observaciones, setObservaciones] = useState("");
-  const { enviarIntervencion, enviando, error } = useIntervenciones();
+  const { enviarIntervencionATodas, enviando, error } = useIntervenciones();
 
-  if (!abierto) return null;
+  if (!abierto || alertas.length === 0) return null;
 
-  const horaAlerta = new Date(alerta.creada_en).toLocaleTimeString("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
   const cama = paciente.cama ?? "SIN CAMA";
+  const cantidad = alertas.length;
+  const etiquetaCantidad =
+    cantidad === 1 ? "1 alerta activa" : `${cantidad} alertas activas`;
 
   async function manejarSubmit() {
-    const resultado = await enviarIntervencion(alerta.id, {
-      accion,
-      observaciones: observaciones.trim() || null,
-    });
-    if (resultado) {
+    const resultado = await enviarIntervencionATodas(
+      alertas.map((a) => a.id),
+      { accion, observaciones: observaciones.trim() || null },
+    );
+
+    if (resultado.exitosas.length > 0) {
+      onExito(resultado.exitosas.map((r) => r.alerta_id));
+    }
+    // Solo cerramos y limpiamos el formulario si TODAS se resolvieron.
+    // Si hubo fallos parciales, el modal queda abierto mostrando el
+    // error (viene de useIntervenciones) para que el usuario reintente.
+    if (resultado.fallidas.length === 0) {
       setAccion("");
       setObservaciones("");
-      onExito(resultado);
+      onCerrar();
     }
   }
 
@@ -93,7 +100,8 @@ function IntervencionModal({
                 letterSpacing: "0.03em",
               }}
             >
-              {paciente.nombre} {paciente.apellido} · CAMA {cama} · {horaAlerta}
+              {paciente.nombre} {paciente.apellido} · CAMA {cama} ·{" "}
+              {etiquetaCantidad}
             </p>
           </div>
           <button
@@ -184,6 +192,21 @@ function IntervencionModal({
           />
         </div>
 
+        <div
+          style={{
+            background: "var(--tint-normal)",
+            border: "1px solid var(--border-normal)",
+            borderRadius: 8,
+            padding: "10px 12px",
+            fontSize: 12.5,
+            color: "var(--color-normal)",
+            marginBottom: 16,
+          }}
+        >
+          "Estabilizar" cierra {etiquetaCantidad} en sus workflows y devuelve el
+          gemelo a estado STABLE.
+        </div>
+
         {error && (
           <p
             style={{
@@ -231,7 +254,7 @@ function IntervencionModal({
               color: "#06120C",
             }}
           >
-            {enviando ? "Enviando..." : "Aceptar"}
+            {enviando ? "Enviando..." : "Estabilizar Paciente"}
           </button>
         </div>
       </div>

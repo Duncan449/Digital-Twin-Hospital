@@ -127,9 +127,7 @@ async def procesar_nueva_medicion(
                     paciente_id=paciente_id,
                     tipo=TipoEvento.alerta_actualizada,
                     descripcion=(
-                        f"{tipo_signo.nombre} en {severidad.value} dentro de la "
-                        "ventana de supresión post-intervención; no se generó "
-                        "una alerta nueva."
+                        f"{tipo_signo.nombre} persiste en {severidad.value},  en seguimiento post-intervención; sin alerta nueva."
                     ),
                     severidad=severidad,
                 )

@@ -12,7 +12,6 @@ import EventoTimeline from "../components/EventoTimeline";
 import IntervencionModal from "../components/IntervencionModal";
 import { BORDE_SEVERIDAD, GLOW_SEVERIDAD } from "../constants/severidad";
 import type { SignoVital } from "../types/clinico";
-import type { IntervencionRespuesta } from "../types/intervencion";
 
 function DigitalTwinView() {
   const { id } = useParams<{ id: string }>();
@@ -40,17 +39,24 @@ function DigitalTwinView() {
 
   const severidad = paciente.data.digital_twin.severidad_actual;
 
-  const alertaActiva = alertas.data.find(
+  // TODAS las alertas activas del paciente, no solo la primera -- un
+  // paciente puede tener varios signos vitales fuera de rango a la vez,
+  // y cada uno es una fila de Alerta separada en el backend (dedupe por
+  // paciente_id + tipo_signo_id).
+  const alertasActivasDelPaciente = alertas.data.filter(
     (a) => a.paciente_id === pacienteId && !alertasIntervenidas.has(a.id),
   );
 
-  function manejarExitoIntervencion(resultado: IntervencionRespuesta) {
+  // El modal puede resolver menos alertas de las que se le pidieron (si
+  // alguna llamada falla), así que acá solo sumamos al set las que
+  // efectivamente se resolvieron. Cerrar el modal es responsabilidad del
+  // propio IntervencionModal -- solo lo hace cuando TODAS salieron bien.
+  function manejarExitoIntervencion(alertaIdsResueltos: string[]) {
     setAlertasIntervenidas((previas) => {
       const siguientes = new Set(previas);
-      siguientes.add(resultado.alerta_id);
+      alertaIdsResueltos.forEach((idAlerta) => siguientes.add(idAlerta));
       return siguientes;
     });
-    setModalAbierto(false);
   }
 
   // Agrupamos el historial plano por tipo_signo_id: sin esto no hay
@@ -134,7 +140,7 @@ function DigitalTwinView() {
             gap: 10,
           }}
         >
-          {alertaActiva && (
+          {alertasActivasDelPaciente.length > 0 && (
             <button
               onClick={() => setModalAbierto(true)}
               style={{
@@ -148,7 +154,10 @@ function DigitalTwinView() {
                 cursor: "pointer",
               }}
             >
-              Intervenir alerta activa
+              Intervenir{" "}
+              {alertasActivasDelPaciente.length === 1
+                ? "alerta activa"
+                : `${alertasActivasDelPaciente.length} alertas activas`}
             </button>
           )}
           <SeveridadBadge severidad={severidad} />
@@ -268,10 +277,10 @@ function DigitalTwinView() {
         </div>
       </div>
 
-      {alertaActiva && (
+      {alertasActivasDelPaciente.length > 0 && (
         <IntervencionModal
           abierto={modalAbierto}
-          alerta={alertaActiva}
+          alertas={alertasActivasDelPaciente}
           paciente={paciente.data}
           onCerrar={() => setModalAbierto(false)}
           onExito={manejarExitoIntervencion}

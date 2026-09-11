@@ -78,18 +78,17 @@ function PatientCard({ paciente, tiposSignosVitales }: PatientCardProps) {
   const signosVitales = useSignosVitales(paciente.id);
 
   const tipoFc = tiposSignosVitales.find(
-    (t) => t.nombre === "Frecuencia cardíaca",
+    (t) => t.nombre === "frecuencia_cardiaca",
   );
   const tipoSpo2 = tiposSignosVitales.find(
-    (t) => t.nombre === "Saturación de oxígeno",
+    (t) => t.nombre === "saturacion_oxigeno",
   );
   const tipoSistolica = tiposSignosVitales.find(
-    (t) => t.nombre === "Presión sistólica",
+    (t) => t.nombre === "presion_sistolica",
   );
   const tipoDiastolica = tiposSignosVitales.find(
-    (t) => t.nombre === "Presión diastólica",
+    (t) => t.nombre === "presion_diastolica",
   );
-
   const historialFc = signosVitales.data
     .filter((s) => s.tipo_signo_id === tipoFc?.id)
     .slice()
