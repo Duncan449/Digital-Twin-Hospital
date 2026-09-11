@@ -1,9 +1,20 @@
 # backend/app/config/redis_client.py
+import redis as redis_sincrono
 import redis.asyncio as redis
 
 from app.config.config import settings
 
+# Canal separado del de eventos clínicos (CANAL_EVENTOS, en
+# app/websockets/eventos.py): coordina exclusivamente entre los scripts
+# de demo (joystick_simulador.py <-> monitor_continuo.py) cuándo pausar
+# o reanudar el control automático de un paciente puntual. A propósito
+# NO es el mismo canal que reenvía el WS Gateway al frontend -- esto es
+# plomería interna entre dos scripts de demo, no un evento clínico que
+# un médico necesite ver en pantalla.
+CANAL_COORDINACION_SIMULADOR = "coordinacion_simulador"
+
 _cliente: redis.Redis | None = None
+_cliente_sincrono: redis_sincrono.Redis | None = None
 
 
 async def get_redis_client() -> redis.Redis:
@@ -18,3 +29,18 @@ async def get_redis_client() -> redis.Redis:
     if _cliente is None:
         _cliente = redis.from_url(settings.redis_url, decode_responses=True)
     return _cliente
+
+
+def get_redis_client_sincrono() -> redis_sincrono.Redis:
+    """
+    Versión síncrona de get_redis_client(), para scripts standalone que
+    no corren sobre asyncio -- hoy solo joystick_simulador.py, que usa
+    el loop bloqueante de pygame en vez de un loop de asyncio. Apunta al
+    mismo servidor Redis que la versión async.
+    """
+    global _cliente_sincrono
+    if _cliente_sincrono is None:
+        _cliente_sincrono = redis_sincrono.Redis.from_url(
+            settings.redis_url, decode_responses=True
+        )
+    return _cliente_sincrono
