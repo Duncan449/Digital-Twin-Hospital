@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 import httpx
 
-from app.config.redis_client import get_redis_client
+from app.config.redis_client import CANAL_COORDINACION_SIMULADOR, get_redis_client
 from app.websockets.eventos import CANAL_EVENTOS
 
 BASE_URL = "http://localhost:8000"
@@ -244,6 +244,78 @@ async def _escuchar_comandos(
             )
 
 
+async def _escuchar_coordinacion_simulador(
+    pares: dict[tuple[str, str], EstadoPar],
+) -> None:
+    """
+    Escucha en un canal APARTE (no CANAL_EVENTOS) los comandos que manda
+    joystick_simulador.py al tomar y soltar el control manual de un
+    paciente. Mientras el joystick controla un paciente, este script no
+    debe seguir posteando mediciones automáticas para él -- competirían
+    entre sí por el mismo paciente, pisándose los valores.
+    """
+    cliente_redis = await get_redis_client()
+    pubsub = cliente_redis.pubsub()
+    await pubsub.subscribe(CANAL_COORDINACION_SIMULADOR)
+
+    async for mensaje in pubsub.listen():
+        if mensaje["type"] != "message":
+            continue
+        try:
+            evento = json.loads(mensaje["data"])
+        except (TypeError, ValueError):
+            continue
+
+        tipo = evento.get("tipo")
+        paciente_id = evento.get("paciente_id")
+
+        if tipo == "pausar_paciente":
+            # Reusamos el estado "pausado" que ya existe (el mismo que
+            # usa la pausa post-resolución), pero con reanudar_en en
+            # infinito: no vence solo por tiempo, solo lo saca de pausa
+            # un "reanudar_paciente" explícito.
+            for par in pares.values():
+                if par.paciente_id == paciente_id:
+                    par.estado = "pausado"
+                    par.reanudar_en = float("inf")
+            print(
+                f"Paciente {paciente_id}: control automático pausado "
+                "(el joystick tomó el control)."
+            )
+
+        elif tipo == "reanudar_paciente":
+            valores = evento.get("valores", {})
+            for par in pares.values():
+                if par.paciente_id != paciente_id:
+                    continue
+
+                nuevo_valor = valores.get(par.tipo_signo_nombre)
+                if nuevo_valor is not None:
+                    par.valor_actual = float(nuevo_valor)
+                    # Si el joystick dejó el valor fuera del rango normal
+                    # (precaución o crítico), NO volvemos a "normal": el
+                    # tick de "normal" clampea al rango normal y borraría
+                    # de un salto un estado real que probablemente ya
+                    # generó una alerta de verdad. "esperando" es el
+                    # mismo estado al que este script ya llega solo
+                    # cuando su propio deterioro pega crítico: se queda
+                    # con jitter chico ahí, sin alejarse ni normalizar
+                    # solo, hasta que la alerta real se resuelva.
+                    dentro_de_rango_normal = (
+                        par.rango_normal_min <= par.valor_actual <= par.rango_normal_max
+                    )
+                    par.estado = "normal" if dentro_de_rango_normal else "esperando"
+                else:
+                    # No debería pasar con el mapeo actual de 6 controles
+                    # del joystick, pero por las dudas no lo dejamos
+                    # trabado en "pausado" para siempre si faltara.
+                    par.estado = "normal"
+
+                par.reanudar_en = 0.0
+
+            print(f"Paciente {paciente_id}: control automático reanudado.")
+
+
 async def _cargar_pares(cliente: httpx.AsyncClient) -> dict[tuple[str, str], EstadoPar]:
     pacientes = (await cliente.get(f"{BASE_URL}/pacientes")).json()
     tipos = (await cliente.get(f"{BASE_URL}/tipos-signos-vitales")).json()
@@ -278,7 +350,7 @@ async def main() -> None:
             asyncio.create_task(_loop_par(cliente, par)) for par in pares.values()
         ]
         tareas.append(asyncio.create_task(_escuchar_comandos(cliente, pares)))
-
+        tareas.append(asyncio.create_task(_escuchar_coordinacion_simulador(pares)))
         await asyncio.gather(*tareas)
 
 
