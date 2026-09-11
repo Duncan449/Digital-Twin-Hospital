@@ -14,6 +14,13 @@ import { BORDE_SEVERIDAD, GLOW_SEVERIDAD } from "../constants/severidad";
 import type { SignoVital } from "../types/clinico";
 import type { IntervencionRespuesta } from "../types/intervencion";
 
+const VENTANA_GRAFICO_MS = 2 * 60 * 60 * 1000; // gráfico de 24 horas
+
+function filtrarVentanaGrafico(historial: SignoVital[]): SignoVital[] {
+  const corte = Date.now() - VENTANA_GRAFICO_MS;
+  return historial.filter((m) => new Date(m.medido_en).getTime() >= corte);
+}
+
 function DigitalTwinView() {
   const { id } = useParams<{ id: string }>();
   const pacienteId = id ?? "";
@@ -220,7 +227,8 @@ function DigitalTwinView() {
               </div>
 
               {tiposSignosVitales.data.map((tipo) => {
-                const historial = historialPorTipo.get(tipo.id) ?? [];
+                const historialCompleto = historialPorTipo.get(tipo.id) ?? [];
+                const historial = filtrarVentanaGrafico(historialCompleto);
                 if (historial.length === 0) return null;
                 return (
                   <VitalSignChart

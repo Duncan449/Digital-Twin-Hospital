@@ -10,13 +10,21 @@ router = APIRouter(tags=["WebSockets"])
 
 class ConnectionManager:
     """
-    Mantiene el registro de qué conexión WebSocket está mirando a qué
-    paciente. Un mismo paciente puede tener varias conexiones abiertas a
-    la vez, por eso guardamos un set de conexiones por paciente_id, no una sola.
+    Mantiene el registro de conexiones WebSocket abiertas, en dos niveles:
+
+    - Por paciente (_conexiones): para clientes que solo quieren los
+      eventos de UN paciente puntual.
+    - Global (_conexiones_globales): para clientes que quieren enterarse
+      de los eventos de TODOS los pacientes a la vez (ej. el Dashboard,
+      que lista alertas de todo el hospital, no de uno solo).
+
+    Un mismo paciente puede tener varias conexiones abiertas a la vez,
+    por eso guardamos un set de conexiones por paciente_id, no una sola.
     """
 
     def __init__(self) -> None:
         self._conexiones: dict[str, set[WebSocket]] = {}
+        self._conexiones_globales: set[WebSocket] = set()
 
     async def conectar(self, paciente_id: str, websocket: WebSocket) -> None:
         await websocket.accept()
@@ -28,6 +36,13 @@ class ConnectionManager:
             conexiones.discard(websocket)
             if not conexiones:
                 del self._conexiones[paciente_id]
+    
+    async def conectar_global(self, websocket: WebSocket) -> None:
+        await websocket.accept()
+        self._conexiones_globales.add(websocket)
+        
+    def desconectar_global(self, websocket: WebSocket) -> None:
+        self._conexiones_globales.discard(websocket)
 
     async def enviar_a_paciente(self, paciente_id: str, mensaje: dict) -> None:
         conexiones = self._conexiones.get(paciente_id)
@@ -42,6 +57,19 @@ class ConnectionManager:
                 await websocket.send_json(mensaje)
             except Exception:
                 self.desconectar(paciente_id, websocket)
+    
+    async def enviar_a_todos(self, mensaje: dict) -> None:
+        """
+        Igual que enviar_a_paciente, pero para las conexiones globales
+        (Dashboard). Se llama SIEMPRE, sin importar de qué paciente sea
+        el evento -- el filtro por paciente_id, si hace falta, lo hace
+        el propio frontend con el mensaje ya recibido.
+        """
+        for websocket in list(self._conexiones_globales):
+            try:
+                await websocket.send_json(mensaje)
+            except Exception:
+                self.desconectar_global(websocket)
 
 
 manager = ConnectionManager()
@@ -65,6 +93,22 @@ async def websocket_paciente_endpoint(websocket: WebSocket, paciente_id: str):
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.desconectar(paciente_id, websocket)
+
+@router.websocket("/ws/eventos")
+async def websocket_eventos_globales_endpoint(websocket: WebSocket):
+    """
+    Igual que websocket_paciente_endpoint, pero sin filtrar por
+    paciente: recibe los eventos de TODOS los pacientes. Pensado para el
+    Dashboard, que necesita enterarse de alertas nuevas sin importar de 
+    qué paciente vengan, y también reusado por la vista de un paciente 
+    individual (que filtra del lado del cliente por paciente_id).
+    """
+    await manager.conectar_global(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.desconectar_global(websocket)
 
 
 async def escuchar_eventos_redis() -> None:
@@ -90,5 +134,6 @@ async def escuchar_eventos_redis() -> None:
 
             contenido = json.loads(mensaje["data"])
             await manager.enviar_a_paciente(contenido["paciente_id"], contenido)
+            await manager.enviar_a_todos(contenido)
     except Exception as error:
         print(f"Error en el listener de eventos Redis: {error}")
