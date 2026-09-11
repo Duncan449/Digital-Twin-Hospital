@@ -24,11 +24,14 @@ MODO_DEBUG en True (ver más abajo): vas a ver en consola qué índice
 corresponde a cada botón/eje que toques, y ahí ajustás los números.
 """
 
+import json
 import time
 import uuid
 
 import httpx
 import pygame
+
+from app.config.redis_client import CANAL_COORDINACION_SIMULADOR, get_redis_client_sincrono
 
 # CONFIGURACIÓN -- lo que más probablemente necesites ajustar
 
@@ -106,6 +109,50 @@ def obtener_catalogo_signos_vitales(cliente: httpx.Client) -> dict:
             "critico_max": float(tipo["rango_critico_max"]),
         }
     return catalogo
+
+
+def obtener_ultimos_valores_reales(
+    cliente: httpx.Client, paciente_id: uuid.UUID, catalogo: dict
+) -> dict[str, float]:
+    """
+    Trae el historial real del paciente y devuelve, para cada signo que
+    ya tenga al menos una medición, su valor más reciente -- así el
+    joystick arranca desde donde el paciente REALMENTE está, en vez de
+    siempre el punto medio del rango normal (que podía generar un salto
+    visible si el paciente ya venía deteriorado). GET
+    /pacientes/{id}/signos-vitales devuelve más reciente primero, así
+    que la PRIMERA ocurrencia de cada tipo_signo_id ya es la última.
+    """
+    respuesta = cliente.get(f"{BASE_URL}/pacientes/{paciente_id}/signos-vitales")
+    respuesta.raise_for_status()
+
+    id_a_nombre = {info["id"]: nombre for nombre, info in catalogo.items()}
+    ultimos: dict[str, float] = {}
+    for medicion in respuesta.json():
+        nombre = id_a_nombre.get(medicion["tipo_signo_id"])
+        if nombre is not None and nombre not in ultimos:
+            ultimos[nombre] = float(medicion["valor"])
+    return ultimos
+
+
+def _publicar_coordinacion(
+    tipo: str, paciente_id: uuid.UUID, valores: dict[str, float] | None = None
+) -> None:
+    """
+    Le avisa a monitor_continuo.py que pause o reanude el control
+    automático de este paciente, por un canal de Redis aparte del de
+    eventos clínicos. Best-effort a propósito: si Redis no está
+    levantado, el joystick tiene que poder seguir funcionando igual --
+    solo se pierde la coordinación con el otro script, no la simulación.
+    """
+    try:
+        cliente_redis = get_redis_client_sincrono()
+        mensaje: dict = {"tipo": tipo, "paciente_id": str(paciente_id)}
+        if valores is not None:
+            mensaje["valores"] = valores
+        cliente_redis.publish(CANAL_COORDINACION_SIMULADOR, json.dumps(mensaje))
+    except Exception as error:
+        print(f"No se pudo publicar '{tipo}' por Redis: {error}")
 
 
 def leer_estado_control(joystick: "pygame.joystick.Joystick", control: dict) -> int:
@@ -191,15 +238,24 @@ def main() -> None:
     # Paso por tick: se calibra sobre el tamaño del rango crítico (para
     # que la velocidad de cambio se "sienta" parecida entre signos con
     # escalas distintas), pero el valor en sí puede superarlo sin límite.
+    ultimos_valores_reales = obtener_ultimos_valores_reales(cliente, paciente_id, catalogo)
+
     valor_actual = {}
     paso = {}
     for control in CONTROLES:
         info = catalogo[control["signo"]]
-        valor_actual[control["signo"]] = (info["normal_min"] + info["normal_max"]) / 2
+        valor_actual[control["signo"]] = ultimos_valores_reales.get(
+            control["signo"], (info["normal_min"] + info["normal_max"]) / 2
+        )
         paso[control["signo"]] = (info["critico_max"] - info["critico_min"]) / PASOS_RECORRIDO
 
     ultimo_valor_enviado = dict(valor_actual)
     ultimo_envio_en = {control["signo"]: 0.0 for control in CONTROLES}
+
+    # A partir de acá el joystick tiene el control de este paciente --
+    # monitor_continuo.py, si está corriendo, deja de postear
+    # automáticamente para él hasta que se lo avisemos de vuelta.
+    _publicar_coordinacion("pausar_paciente", paciente_id)
 
     print("\nListo. Usá los controles mapeados para mover los signos vitales.")
     print("Ctrl+C para salir.\n")
@@ -236,8 +292,12 @@ def main() -> None:
     except KeyboardInterrupt:
         print("\nSimulación detenida.")
     finally:
+        # Le devolvemos el control a monitor_continuo.py con los
+        # últimos valores reales que dejamos, para que retome desde ahí
+        # en vez de un valor viejo que tenía en memoria de antes de que
+        # el joystick tomara el control (evita otro salto, ahora al revés).
+        _publicar_coordinacion("reanudar_paciente", paciente_id, valor_actual)
         cliente.close()
-
 
 def _enviar_medicion(
     cliente: httpx.Client,
