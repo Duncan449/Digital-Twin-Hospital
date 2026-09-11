@@ -24,3 +24,16 @@ export function calcularSeveridadSigno(
   }
   return "critica";
 }
+
+const ORDEN_SEVERIDAD: Record<NivelSeveridad, number> = {
+  normal: 0,
+  precaucion: 1,
+  critica: 2,
+};
+
+export function severidadMasAlta(
+  a: NivelSeveridad,
+  b: NivelSeveridad,
+): NivelSeveridad {
+  return ORDEN_SEVERIDAD[b] > ORDEN_SEVERIDAD[a] ? b : a;
+}

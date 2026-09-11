@@ -36,7 +36,8 @@ function Login() {
   return (
     <div className="login-page">
       <form className="login-card" onSubmit={manejarSubmit}>
-        <h1>Digital Twin Hospital</h1>
+        <img src="/logo.png" alt="Health Twin" className="login-logo" />
+        <h1>Health Twin</h1>
         <p className="login-subtitle">Iniciá sesión para continuar</p>
 
         <label htmlFor="email">Email</label>

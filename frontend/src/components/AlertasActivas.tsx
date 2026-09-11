@@ -16,7 +16,8 @@ function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
         padding: "13px 16px",
         marginBottom: "20px",
         borderRadius: "12px",
-        background: "linear-gradient(90deg, rgba(239,68,68,.18), rgba(239,68,68,.04))",
+        background:
+          "linear-gradient(90deg, rgba(239,68,68,.18), rgba(239,68,68,.04))",
         border: "1px solid var(--border-critica)",
       }}
     >
@@ -38,21 +39,42 @@ function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
         </strong>
       </div>
 
-      <ul style={{ margin: "10px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: "6px" }}>
+      <ul
+        style={{
+          margin: "10px 0 0",
+          padding: 0,
+          listStyle: "none",
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+        }}
+      >
         {alertas.map((alerta) => {
           const paciente = pacientes.find((p) => p.id === alerta.paciente_id);
           return (
             <li key={alerta.id}>
-              <Link to={`/pacientes/${alerta.paciente_id}`} style={{ color: "var(--text)", fontSize: "13px" }}>
-                <span style={{ color: "var(--color-critica)", fontWeight: 600 }}>
-                  {paciente ? `${paciente.nombre} ${paciente.apellido}` : "Paciente"}
+              <Link
+                to={`/pacientes/${alerta.paciente_id}`}
+                style={{ color: "var(--text)", fontSize: "13px" }}
+              >
+                <span
+                  style={{ color: "var(--color-critica)", fontWeight: 600 }}
+                >
+                  {paciente
+                    ? `${paciente.nombre} ${paciente.apellido}`
+                    : "Paciente"}
                 </span>
                 {" — "}
                 {alerta.severidad} ({alerta.valor_detectado ?? "?"})
                 {alerta.workflow_id_temporal === null && (
-                  <span style={{ marginLeft: "6px", fontFamily: "var(--mono)", fontSize: "10.5px", color: "var(--text-muted)" }}>
-                    ⚠ sin workflow
-                  </span>
+                  <span
+                    style={{
+                      marginLeft: "6px",
+                      fontFamily: "var(--mono)",
+                      fontSize: "10.5px",
+                      color: "var(--text-muted)",
+                    }}
+                  ></span>
                 )}
               </Link>
             </li>

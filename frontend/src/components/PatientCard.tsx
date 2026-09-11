@@ -3,10 +3,13 @@ import type { Paciente } from "../types/pacientes";
 import type { NivelSeveridad } from "../types/enums";
 import type { SignoVital, TipoSignoVital } from "../types/clinico";
 import { useSignosVitales } from "../hooks/useSignosVitales";
-import { calcularSeveridadSigno } from "../utils/severidadSigno";
 import { COLOR_SEVERIDAD } from "../constants/severidad";
 import Sparkline from "./Sparkline";
 import VitalMiniStat from "./VitalMiniStat";
+import {
+  calcularSeveridadSigno,
+  severidadMasAlta,
+} from "../utils/severidadSigno";
 
 interface PatientCardProps {
   paciente: Paciente;
@@ -65,17 +68,29 @@ function obtenerUltimoValor(
 function PatientCard({ paciente, tiposSignosVitales }: PatientCardProps) {
   const estaDadoDeAlta = paciente.estado === "dado_de_alta";
 
+  const signosVitales = useSignosVitales(paciente.id);
+
+  // digital_twin.severidad_actual es una foto vieja (usePacientes no
+  // tiene WS). En vez de confiar en ella, recalculamos "en vivo" contra
+  // TODOS los tipos del catálogo -- no solo los 4 que se muestran en las
+  // mini-cards -- reusando obtenerUltimoValor + calcularSeveridadSigno,
+  // que ya existen en este archivo para las mini-cards.
+  const severidadEnVivo: NivelSeveridad = estaDadoDeAlta
+    ? "normal"
+    : tiposSignosVitales.reduce((peor, tipo) => {
+        const ultima = obtenerUltimoValor(signosVitales.data, tipo.id);
+        if (!ultima) return peor;
+        return severidadMasAlta(
+          peor,
+          calcularSeveridadSigno(Number(ultima.valor), tipo),
+        );
+      }, "normal" as NivelSeveridad);
+
   const estilo = estaDadoDeAlta
     ? ESTILO_DADO_DE_ALTA
-    : ESTILO_POR_SEVERIDAD[paciente.digital_twin.severidad_actual];
+    : ESTILO_POR_SEVERIDAD[severidadEnVivo];
 
-  const esCritica =
-    !estaDadoDeAlta && paciente.digital_twin.severidad_actual === "critica";
-
-  // Un solo fetch por card (historial completo del paciente, todos los
-  // tipos); de ahí sacamos tanto el sparkline de FC como las 3 mini
-  // tarjetas -- no hace falta pedir nada más de una vez.
-  const signosVitales = useSignosVitales(paciente.id);
+  const esCritica = !estaDadoDeAlta && severidadEnVivo === "critica";
 
   const tipoFc = tiposSignosVitales.find(
     (t) => t.nombre === "frecuencia_cardiaca",
@@ -116,14 +131,27 @@ function PatientCard({ paciente, tiposSignosVitales }: PatientCardProps) {
           calcularSeveridadSigno(Number(ultimaSpo2.valor), tipoSpo2)
         ]
       : "var(--text-muted)";
-  const colorBp =
-    tipoSistolica && ultimaSistolica
-      ? COLOR_SEVERIDAD[
-          calcularSeveridadSigno(Number(ultimaSistolica.valor), tipoSistolica)
-        ]
-      : "var(--text-muted)";
+  let severidadBp: NivelSeveridad | undefined;
+  if (tipoSistolica && ultimaSistolica) {
+    severidadBp = calcularSeveridadSigno(
+      Number(ultimaSistolica.valor),
+      tipoSistolica,
+    );
+  }
+  if (tipoDiastolica && ultimaDiastolica) {
+    const severidadDiastolica = calcularSeveridadSigno(
+      Number(ultimaDiastolica.valor),
+      tipoDiastolica,
+    );
+    severidadBp = severidadBp
+      ? severidadMasAlta(severidadBp, severidadDiastolica)
+      : severidadDiastolica;
+  }
+  const colorBp = severidadBp
+    ? COLOR_SEVERIDAD[severidadBp]
+    : "var(--text-muted)";
 
-  const bpTexto = `${ultimaSistolica ? Number(ultimaSistolica.valor) : "–"}/${ultimaDiastolica ? Number(ultimaDiastolica.valor) : "–"}`;
+  const bpTexto = `${ultimaSistolica ? Math.round(Number(ultimaSistolica.valor)) : "–"}/${ultimaDiastolica ? Math.round(Number(ultimaDiastolica.valor)) : "–"}`;
 
   return (
     <Link
@@ -135,6 +163,7 @@ function PatientCard({ paciente, tiposSignosVitales }: PatientCardProps) {
         color: "inherit",
         padding: "17px 17px 17px 20px",
         borderRadius: "14px",
+        overflow: "hidden",
         background:
           "linear-gradient(165deg, var(--bg-panel), var(--bg-panel-alt))",
         border: `1px solid ${estilo.border}`,
@@ -198,7 +227,7 @@ function PatientCard({ paciente, tiposSignosVitales }: PatientCardProps) {
               padding: "8px 8px 4px",
             }}
           >
-            <Sparkline valores={historialFc} color={estilo.color} />
+            <Sparkline valores={historialFc} color={colorFc} />
             <div
               style={{
                 display: "flex",
@@ -225,13 +254,19 @@ function PatientCard({ paciente, tiposSignosVitales }: PatientCardProps) {
           >
             <VitalMiniStat
               etiqueta="FC"
-              valor={ultimaFc ? Number(ultimaFc.valor).toString() : "–"}
+              valor={
+                ultimaFc ? Math.round(Number(ultimaFc.valor)).toString() : "–"
+              }
               unidad="bpm"
               color={colorFc}
             />
             <VitalMiniStat
               etiqueta="SpO2"
-              valor={ultimaSpo2 ? Number(ultimaSpo2.valor).toString() : "–"}
+              valor={
+                ultimaSpo2
+                  ? Math.round(Number(ultimaSpo2.valor)).toString()
+                  : "–"
+              }
               unidad="%"
               color={colorSpo2}
             />

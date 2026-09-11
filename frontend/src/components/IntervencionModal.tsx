@@ -202,10 +202,7 @@ function IntervencionModal({
             color: "var(--color-normal)",
             marginBottom: 16,
           }}
-        >
-          "Estabilizar" cierra {etiquetaCantidad} en sus workflows y devuelve el
-          gemelo a estado STABLE.
-        </div>
+        ></div>
 
         {error && (
           <p

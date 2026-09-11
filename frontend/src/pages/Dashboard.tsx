@@ -16,7 +16,7 @@ function Dashboard() {
 
   return (
     <div>
-      <h1>Dashboard</h1>
+      <h1></h1>
       <AlertasActivas alertas={alertas} pacientes={pacientes} />
       <KpiPanel pacientes={pacientes} />
       <div className="dashboard-grid">

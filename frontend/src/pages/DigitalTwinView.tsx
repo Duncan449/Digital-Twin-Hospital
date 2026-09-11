@@ -12,6 +12,11 @@ import EventoTimeline from "../components/EventoTimeline";
 import IntervencionModal from "../components/IntervencionModal";
 import { BORDE_SEVERIDAD, GLOW_SEVERIDAD } from "../constants/severidad";
 import type { SignoVital } from "../types/clinico";
+import type { NivelSeveridad } from "../types/enums";
+import {
+  calcularSeveridadSigno,
+  severidadMasAlta,
+} from "../utils/severidadSigno";
 
 const VENTANA_GRAFICO_MS = 2 * 60 * 60 * 1000; // gráfico de 24 horas
 
@@ -43,8 +48,6 @@ function DigitalTwinView() {
   if (paciente.error)
     return <p style={{ padding: 22 }}>Error: {paciente.error}</p>;
   if (!paciente.data) return null;
-
-  const severidad = paciente.data.digital_twin.severidad_actual;
 
   // TODAS las alertas activas del paciente, no solo la primera -- un
   // paciente puede tener varios signos vitales fuera de rango a la vez,
@@ -87,6 +90,19 @@ function DigitalTwinView() {
     lista.sort((a, b) => (a.medido_en < b.medido_en ? -1 : 1));
   }
 
+  let severidad: NivelSeveridad = paciente.data.digital_twin.severidad_actual;
+  if (!tiposSignosVitales.loading) {
+    severidad = tiposSignosVitales.data.reduce((peor, tipo) => {
+      const historial = historialPorTipo.get(tipo.id) ?? [];
+      const ultima = historial[historial.length - 1];
+      if (!ultima) return peor;
+      return severidadMasAlta(
+        peor,
+        calcularSeveridadSigno(Number(ultima.valor), tipo),
+      );
+    }, "normal" as NivelSeveridad);
+  }
+
   return (
     <div style={{ padding: "20px 22px 34px" }}>
       <div
@@ -114,7 +130,7 @@ function DigitalTwinView() {
             textDecoration: "none",
           }}
         >
-          ← Dashboard
+          {"⟵ Dashboard"}
         </Link>
         <div
           style={{

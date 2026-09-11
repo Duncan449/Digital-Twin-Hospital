@@ -52,6 +52,7 @@ function Layout() {
       >
         <header
           style={{
+            position: "relative",
             display: "flex",
             alignItems: "center",
             gap: "20px",
@@ -60,24 +61,41 @@ function Layout() {
             background: "var(--bg-panel-alt)",
           }}
         >
+          <Link to="/" style={{ display: "flex", alignItems: "center" }}>
+            <img
+              src="/logo.png"
+              alt="Health Twin"
+              style={{ height: "30px", width: "auto" }}
+            />
+          </Link>
+
+          {/* Título — centrado respecto al ancho total del header (no al
+              espacio libre entre logo y el grupo de la derecha), por eso
+              position:absolute + left:50% + translate en vez de
+              margin:auto o justify-content. */}
           <Link
             to="/"
             style={{
+              position: "absolute",
+              left: "50%",
+              top: "50%",
+              transform: "translate(-50%, -50%)",
               display: "inline-flex",
               flexDirection: "column",
+              alignItems: "center",
               lineHeight: 1.15,
               textDecoration: "none",
             }}
           >
             <span
               style={{
-                fontSize: "15px",
+                fontSize: "20px",
                 fontWeight: 700,
                 letterSpacing: ".14em",
                 color: "var(--text-h)",
               }}
             >
-              VITA<span style={{ color: "var(--color-normal)" }}>·</span>TWIN
+              HEALTH<span style={{ color: "var(--color-normal)" }}>·</span>TWIN
             </span>
             <span
               style={{
@@ -87,39 +105,42 @@ function Layout() {
                 letterSpacing: ".12em",
                 marginTop: "2px",
               }}
-            >
-              DIGITAL TWIN MONITORING
-            </span>
+            ></span>
           </Link>
+
+          {/* Grupo de la derecha: WS + reloj + logout. marginLeft:"auto"
+              queda en el primer elemento (el indicador WS) -- ahora que
+              el título salió del flujo del flex, este empuja contra el
+              logo directamente, no contra el título. */}
 
           <span
             style={{
               marginLeft: "auto",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            fontFamily: "var(--mono)",
-            fontSize: "10px",
-            letterSpacing: ".1em",
-            color: conectado ? "var(--color-normal)" : "var(--text-muted)",
-          }}
-        >
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "8px",
+              fontFamily: "var(--mono)",
+              fontSize: "10px",
+              letterSpacing: ".1em",
+              color: conectado ? "var(--color-normal)" : "var(--text-muted)",
+            }}
+          >
+            <span
+              style={{
+                width: "7px",
+                height: "7px",
+                borderRadius: "50%",
+                background: conectado
+                  ? "var(--color-normal)"
+                  : "var(--text-muted)",
+                boxShadow: conectado ? "0 0 8px var(--color-normal)" : "none",
+              }}
+            />
+            {conectado ? "WS LIVE" : "SIN CONEXIÓN"}
+          </span>
+
           <span
             style={{
-              width: "7px",
-              height: "7px",
-              borderRadius: "50%",
-              background: conectado
-                ? "var(--color-normal)"
-                : "var(--text-muted)",
-              boxShadow: conectado ? "0 0 8px var(--color-normal)" : "none",
-            }}
-          />
-          {conectado ? "WS LIVE" : "SIN CONEXIÓN"}
-        </span>
-
-        <span
-          style={{
               fontFamily: "var(--mono)",
               fontSize: "15px",
               fontWeight: 600,
