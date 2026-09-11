@@ -6,7 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config.database import get_db
 from app.models.enums import EstadoAlerta
 from app.schemas.alertas import AlertaRespuesta
+from app.schemas.intervenciones import IntervencionRespuesta
 from app.services.alertas_service import listar_alertas, listar_alertas_paciente, obtener_alerta
+from app.services.intervenciones_service import estabilizar_todas_las_alertas_activas
 
 router = APIRouter(prefix="/alertas", tags=["Alertas"])
 router_paciente = APIRouter(prefix="/pacientes/{paciente_id}/alertas", tags=["Alertas"])
@@ -19,6 +21,15 @@ async def listar_alertas_endpoint(
 ):
     """Lista alertas por estado. Por default, solo las activas."""
     return await listar_alertas(db, estado)
+
+
+@router.post("/estabilizar-todos", response_model=list[IntervencionRespuesta])
+async def estabilizar_todas_las_alertas_endpoint(db: AsyncSession = Depends(get_db)):
+    """
+    Botón de reset del panel del simulador: resuelve todas las alertas
+    activas de pacientes internados.
+    """
+    return await estabilizar_todas_las_alertas_activas(db)
 
 
 @router.get("/{alerta_id}", response_model=AlertaRespuesta)
