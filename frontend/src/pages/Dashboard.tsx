@@ -17,7 +17,7 @@ function Dashboard() {
   return (
     <div>
       <h1>Dashboard</h1>
-      <AlertasActivas alertas={alertas} pacientes={pacientes} />
+      <AlertasActivas alertas={alertas} pacientes={pacientes} tiposSignosVitales={tiposSignosVitales} />
       <KpiPanel pacientes={pacientes} />
       <div className="dashboard-grid">
         {pacientes.map((paciente) => (

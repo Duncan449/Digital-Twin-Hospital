@@ -34,9 +34,7 @@ async def get_redis_client() -> redis.Redis:
 def get_redis_client_sincrono() -> redis_sincrono.Redis:
     """
     Versión síncrona de get_redis_client(), para scripts standalone que
-    no corren sobre asyncio -- hoy solo joystick_simulador.py, que usa
-    el loop bloqueante de pygame en vez de un loop de asyncio. Apunta al
-    mismo servidor Redis que la versión async.
+    no corren sobre asyncio
     """
     global _cliente_sincrono
     if _cliente_sincrono is None:
