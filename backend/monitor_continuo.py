@@ -47,6 +47,12 @@ PROBABILIDAD_DETERIORO_ESPONTANEO = 0.003  # por tick, solo en estado "normal"
 PAUSA_POST_RESOLUCION_SEG = (
     95  # margen para no pisar la estabilización automática de Temporal
 )
+LIMITE_FISICO_MAX = {
+    # Saturación de oxígeno es un porcentaje: no tiene sentido clínico
+    # "deteriorar hacia arriba" ni superar el 100%. Los demás signos no
+    # tienen techo físico real dentro de los rangos que maneja el sistema.
+    "saturacion_oxigeno": 100.0,
+}
 
 
 @dataclass
@@ -69,7 +75,15 @@ def _arrancar_deterioro(par: EstadoPar) -> None:
     '''
     Cambia el estado a "deteriorando" y define un objetivo fuera del rango normal, hacia arriba o hacia abajo. Se llama desde el loop de cada par
     (espontáneo) o desde el listener de comandos (manual).'''
-    direccion_arriba = random.choice([True, False])
+
+    limite_max = LIMITE_FISICO_MAX.get(par.tipo_signo_nombre)
+    if limite_max is not None:
+        # Si el signo tiene techo físico (ej. SpO2 no puede pasar de 100%),
+        # el único deterioro con sentido clínico es hacia abajo.
+        direccion_arriba = False
+    else:
+        direccion_arriba = random.choice([True, False])
+
     if direccion_arriba:
         margen = max(par.rango_critico_max - par.rango_normal_max, 0.1)
         par.objetivo = par.rango_critico_max + margen * 0.5
@@ -77,11 +91,22 @@ def _arrancar_deterioro(par: EstadoPar) -> None:
         margen = max(par.rango_normal_min - par.rango_critico_min, 0.1)
         par.objetivo = par.rango_critico_min - margen * 0.5
 
+    if limite_max is not None:
+        par.objetivo = min(par.objetivo, limite_max)
+
     par.estado = "deteriorando"
     print(
         f"[{par.paciente_nombre} / {par.tipo_signo_nombre}] arranca deterioro "
         f"hacia {'arriba' if direccion_arriba else 'abajo'}."
     )
+
+
+def _aplicar_limite_fisico(par: EstadoPar, valor: float) -> float:
+    """Recorta el valor contra un techo físico real, si el signo tiene uno."""
+    limite_max = LIMITE_FISICO_MAX.get(par.tipo_signo_nombre)
+    if limite_max is not None:
+        return min(valor, limite_max)
+    return valor
 
 
 def _tick_normal(par: EstadoPar) -> float:
@@ -91,15 +116,17 @@ def _tick_normal(par: EstadoPar) -> float:
 
 
 def _tick_deteriorando(par: EstadoPar) -> float:
-    return (
+    nuevo = (
         par.valor_actual + (par.objetivo - par.valor_actual) * FRACCION_AVANCE_DETERIORO
     )
+    return _aplicar_limite_fisico(par, nuevo)
 
 
 def _tick_esperando(par: EstadoPar) -> float:
     # jitter chico alrededor del valor crítico actual, sin seguir alejándose
     amplitud = abs(par.rango_critico_max - par.rango_critico_min) * 0.02
-    return par.valor_actual + random.uniform(-amplitud, amplitud)
+    nuevo = par.valor_actual + random.uniform(-amplitud, amplitud)
+    return _aplicar_limite_fisico(par, nuevo)
 
 
 async def _postear_medicion(
@@ -248,11 +275,10 @@ async def _escuchar_coordinacion_simulador(
     pares: dict[tuple[str, str], EstadoPar],
 ) -> None:
     """
-    Escucha en un canal APARTE (no CANAL_EVENTOS) los comandos que manda
+    Escucha en un canal aparte los comandos que manda
     joystick_simulador.py al tomar y soltar el control manual de un
     paciente. Mientras el joystick controla un paciente, este script no
-    debe seguir posteando mediciones automáticas para él -- competirían
-    entre sí por el mismo paciente, pisándose los valores.
+    debe seguir posteando mediciones automáticas para él.
     """
     cliente_redis = await get_redis_client()
     pubsub = cliente_redis.pubsub()
@@ -270,10 +296,8 @@ async def _escuchar_coordinacion_simulador(
         paciente_id = evento.get("paciente_id")
 
         if tipo == "pausar_paciente":
-            # Reusamos el estado "pausado" que ya existe (el mismo que
-            # usa la pausa post-resolución), pero con reanudar_en en
-            # infinito: no vence solo por tiempo, solo lo saca de pausa
-            # un "reanudar_paciente" explícito.
+            # Reusamos el estado "pausado" pero con reanudar_en en
+            # infinito, solo lo saca de pausa un "reanudar_paciente" explícito.
             for par in pares.values():
                 if par.paciente_id == paciente_id:
                     par.estado = "pausado"
@@ -293,12 +317,9 @@ async def _escuchar_coordinacion_simulador(
                 if nuevo_valor is not None:
                     par.valor_actual = float(nuevo_valor)
                     # Si el joystick dejó el valor fuera del rango normal
-                    # (precaución o crítico), NO volvemos a "normal": el
-                    # tick de "normal" clampea al rango normal y borraría
-                    # de un salto un estado real que probablemente ya
-                    # generó una alerta de verdad. "esperando" es el
-                    # mismo estado al que este script ya llega solo
-                    # cuando su propio deterioro pega crítico: se queda
+                    # (precaución o crítico), no volvemos a "normal"
+                    # "esperando" es el mismo estado al que este script ya llega solo
+                    # cuando su propio deterioro pega crítico, se queda
                     # con jitter chico ahí, sin alejarse ni normalizar
                     # solo, hasta que la alerta real se resuelva.
                     dentro_de_rango_normal = (

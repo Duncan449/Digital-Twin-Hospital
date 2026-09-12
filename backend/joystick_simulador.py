@@ -65,6 +65,12 @@ PASOS_RECORRIDO = 60
 # Este mínimo evita mandar un valor inválido, nada más.
 VALOR_MINIMO_TECNICO = 0.01
 
+# Saturación de oxígeno es un porcentaje y no puede superar el 100%.
+# Es el único signo del catálogo con este tipo de límite.
+LIMITE_FISICO_MAX = {
+    "saturacion_oxigeno": 100.0,
+}
+
 # Cada cuántos segundos, como máximo, se manda una medición al backend
 # por signo vital (evita saturar con un POST por cada frame del loop).
 INTERVALO_ENVIO_SEG = 0.3
@@ -116,12 +122,8 @@ def obtener_ultimos_valores_reales(
 ) -> dict[str, float]:
     """
     Trae el historial real del paciente y devuelve, para cada signo que
-    ya tenga al menos una medición, su valor más reciente -- así el
-    joystick arranca desde donde el paciente REALMENTE está, en vez de
-    siempre el punto medio del rango normal (que podía generar un salto
-    visible si el paciente ya venía deteriorado). GET
-    /pacientes/{id}/signos-vitales devuelve más reciente primero, así
-    que la PRIMERA ocurrencia de cada tipo_signo_id ya es la última.
+    ya tenga al menos una medición, su valor más reciente así el
+    joystick arranca desde donde el paciente ya estaba.
     """
     respuesta = cliente.get(f"{BASE_URL}/pacientes/{paciente_id}/signos-vitales")
     respuesta.raise_for_status()
@@ -273,11 +275,13 @@ def main() -> None:
 
                 if direccion != 0:
                     nuevo_valor = valor_actual[signo] + direccion * paso[signo]
-                    # Sin techo: el valor puede subir sin límite. El único
-                    # piso es VALOR_MINIMO_TECNICO, para no violar la
-                    # regla valor > 0 del schema (no es un límite clínico,
-                    # es puramente para que el POST no sea rechazado).
+                    # Piso técnico (no clínico) para no violar valor > 0.
                     nuevo_valor = max(VALOR_MINIMO_TECNICO, nuevo_valor)
+                    # Techo físico, solo para los signos que lo tienen
+                    # (hoy, únicamente saturación de oxígeno).
+                    limite_max = LIMITE_FISICO_MAX.get(signo)
+                    if limite_max is not None:
+                        nuevo_valor = min(nuevo_valor, limite_max)
                     valor_actual[signo] = nuevo_valor
 
                 cambio_significativo = abs(valor_actual[signo] - ultimo_valor_enviado[signo]) > 0.05
