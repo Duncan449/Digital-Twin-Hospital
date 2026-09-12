@@ -86,6 +86,8 @@ export function useAlertas(): UseAlertasResultado {
             a.id === alertaId
               ? {
                   ...a,
+                  tipo_signo_id:
+                    (evento.data.tipo_signo_id as string) ?? a.tipo_signo_id,
                   severidad: evento.data.severidad as Alerta["severidad"],
                   valor_detectado:
                     (evento.data.valor_detectado as string) ?? null,
@@ -95,16 +97,10 @@ export function useAlertas(): UseAlertasResultado {
           );
         }
 
-        // alerta_generada (o una actualizada que llegó antes de que
-        // terminara el fetch inicial): la agregamos como entrada nueva.
-        // tipo_signo_id y workflow_id_temporal no viajan en este
-        // evento -- quedan en null hasta el próximo fetch completo
-        // (workflow_id_temporal, de hecho, todavía es null en el
-        // backend en este preciso instante: recién se asigna después).
         const nueva: Alerta = {
           id: alertaId,
           paciente_id: evento.paciente_id,
-          tipo_signo_id: null,
+          tipo_signo_id: (evento.data.tipo_signo_id as string) ?? null,
           severidad: evento.data.severidad as Alerta["severidad"],
           valor_detectado: (evento.data.valor_detectado as string) ?? null,
           estado: evento.data.estado as Alerta["estado"],

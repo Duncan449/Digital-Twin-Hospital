@@ -81,6 +81,7 @@ async def registrar_signo_vital(
             ),
             data={
                 "alerta_id": str(alerta.id),
+                "tipo_signo_id": str(alerta.tipo_signo_id),
                 "severidad": alerta.severidad.value,
                 "valor_detectado": str(alerta.valor_detectado),
                 "estado": alerta.estado.value,
