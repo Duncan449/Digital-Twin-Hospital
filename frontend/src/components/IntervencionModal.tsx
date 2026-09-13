@@ -192,18 +192,6 @@ function IntervencionModal({
           />
         </div>
 
-        <div
-          style={{
-            background: "var(--tint-normal)",
-            border: "1px solid var(--border-normal)",
-            borderRadius: 8,
-            padding: "10px 12px",
-            fontSize: 12.5,
-            color: "var(--color-normal)",
-            marginBottom: 16,
-          }}
-        ></div>
-
         {error && (
           <p
             style={{
@@ -251,7 +239,7 @@ function IntervencionModal({
               color: "#06120C",
             }}
           >
-            {enviando ? "Enviando..." : "Estabilizar Paciente"}
+            {enviando ? "Enviando..." : "Aceptar"}
           </button>
         </div>
       </div>
