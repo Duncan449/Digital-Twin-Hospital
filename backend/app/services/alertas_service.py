@@ -7,7 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.clinico import Alerta
 from app.models.enums import EstadoAlerta
 from app.services.pacientes_service import obtener_paciente
-
+from temporal.client import get_temporal_client
+from temporal.workflows import AlertaWorkflow
 
 async def listar_alertas(
     db: AsyncSession, estado: EstadoAlerta = EstadoAlerta.activa
@@ -47,3 +48,20 @@ async def listar_alertas_paciente(
         .order_by(Alerta.creada_en.desc())
     )
     return list(resultado.scalars().all())
+
+
+async def obtener_estado_workflow_alerta(
+    db: AsyncSession, alerta_id: uuid.UUID
+) -> dict:
+    """
+    Consulta el estado del AlertaWorkflow (fase, nivel de escalación) directamente en Temporal.
+    Si el Worker está caído, esto sigue respondiendo ya que Temporal sirve la Query
+    desde el historial persistido del workflow.
+    """
+    alerta = await obtener_alerta(db, alerta_id)
+    if alerta.workflow_id_temporal is None:
+        return {"fase": "sin_workflow", "nivel_escalacion": 0}
+
+    client = await get_temporal_client()
+    handle = client.get_workflow_handle(alerta.workflow_id_temporal)
+    return await handle.query(AlertaWorkflow.estado_actual)

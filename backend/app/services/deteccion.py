@@ -166,15 +166,18 @@ async def procesar_nueva_medicion(
         )
 
         if alerta_existente is not None:
+            severidad_cambio = alerta_existente.severidad != severidad
             alerta_existente.severidad = severidad
             alerta_existente.valor_detectado = valor
             alerta = alerta_existente
-            db.add(Evento(
-                paciente_id=paciente_id,
-                tipo=TipoEvento.alerta_actualizada,
-                descripcion=f"Alerta actualizada a {severidad.value}",
-                severidad=severidad,
-            ))
+            if severidad_cambio:
+                db.add(Evento(
+                    paciente_id=paciente_id,
+                    tipo=TipoEvento.alerta_actualizada,
+                    descripcion=f"Alerta actualizada a {severidad.value}",
+                    severidad=severidad,
+                ))
+                
         elif await _hay_alerta_resuelta_reciente(db, paciente_id, tipo_signo_id):
             # Ventana de supresión activa: no generamos una alerta nueva,
             # pero dejamos rastro en el historial de que el paciente
