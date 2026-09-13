@@ -9,14 +9,19 @@ interface UsePacientesResultado {
   error: string | null;
 }
 
-// Eventos que traen un cambio real en digital_twin.severidad_actual:
-// - alerta_generada/actualizada: cuando una medición dispara o
-//   actualiza una alerta (deterioro).
-// - medicion_registrada: se dispara en TODA medición, incluidas las
-//   6 mediciones de la estabilización automática post-intervención
-//   sin este evento, el punto se quedaba pegado en naranja/rojo porque 
-//   durante la estabilización la alerta ya está resuelta y no hay ningún 
-//  evento de tipo alerta.
+// Eventos que pueden significar un cambio en digital_twin.severidad_actual:
+// - alerta_generada/actualizada: una medición dispara o actualiza una alerta.
+// - medicion_registrada: se dispara en TODA medición, incluida la
+//   estabilización post-intervención.
+//
+// A propósito NO tratamos de derivar la nueva severidad de ningún campo
+// del evento (ej. "severidad_calculada"): ese campo es la severidad del
+// SIGNO puntual que se acaba de medir, no la del paciente en su
+// conjunto -- confundir esos dos valores fue justo el bug (una medición
+// normal de un signo distinto pisaba el estado crítico de otro). El
+// backend (deteccion.py) ya calcula correctamente severidad_actual como
+// el máximo entre todas las alertas activas del paciente; acá solo le
+// preguntamos ese resultado ya calculado, en vez de reinventarlo.
 const TIPOS_SEVERIDAD = new Set([
   "alerta_generada",
   "alerta_actualizada",
@@ -64,32 +69,33 @@ export function usePacientes(): UsePacientesResultado {
     return () => controlador.abort();
   }, []);
 
-  // Sin esto, digital_twin.severidad_actual queda con el valor
-  // que tenía al montar el Dashboard -- por eso los KPIs (que leen
-  // justo ese campo) no se movían aunque AlertasActivas sí reaccionaba.
   useEffect(() => {
     return suscribir((evento) => {
       if (!TIPOS_SEVERIDAD.has(evento.tipo)) return;
 
-      const nuevaSeveridad = (evento.data.severidad ??
-        evento.data.severidad_calculada) as
-        | Paciente["digital_twin"]["severidad_actual"]
-        | undefined;
-      if (!nuevaSeveridad) return;
-
-      setData((previos) =>
-        previos.map((p) =>
-          p.id === evento.paciente_id
-            ? {
-                ...p,
-                digital_twin: {
-                  ...p.digital_twin,
-                  severidad_actual: nuevaSeveridad,
-                },
-              }
-            : p,
-        ),
-      );
+      // Le preguntamos al backend el estado real y ya calculado de ESE
+      // paciente puntual, en vez de tratar de derivarlo nosotros del
+      // contenido del evento. Es un fetch chico (un solo paciente), y
+      // es la única forma de estar seguros de que coincide con lo que
+      // deteccion.py acaba de commitear.
+      apiFetch(`/pacientes/${evento.paciente_id}`)
+        .then((respuesta) => {
+          if (!respuesta.ok) return null;
+          return respuesta.json() as Promise<Paciente>;
+        })
+        .then((pacienteActualizado) => {
+          if (!pacienteActualizado) return;
+          setData((previos) =>
+            previos.map((p) =>
+              p.id === pacienteActualizado.id ? pacienteActualizado : p,
+            ),
+          );
+        })
+        .catch(() => {
+          // Best-effort: si este fetch puntual falla, el paciente
+          // simplemente se queda con el valor anterior hasta el
+          // próximo evento -- no rompemos el resto del Dashboard por esto.
+        });
     });
   }, [suscribir]);
 

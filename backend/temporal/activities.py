@@ -1,5 +1,6 @@
 import asyncio 
 import uuid
+from sqlalchemy import select
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -9,6 +10,8 @@ from app.config.database import AsyncSessionLocal
 from app.models.clinico import Alerta, Evento, TipoSignoVital
 from app.models.enums import EstadoAlerta, TipoEvento
 from app.websockets.eventos import publicar_evento
+from app.models.pacientes import DigitalTwin
+from app.services.deteccion import _calcular_severidad_actual_paciente
 
 
 # Cuántos pasos y cuánto tiempo tarda la estabilización automática que se
@@ -103,6 +106,27 @@ async def notificar_resolucion(alerta_id: str, accion: str, observaciones: str |
 
         alerta.estado = EstadoAlerta.resuelta
         alerta.resuelta_en = datetime.now(timezone.utc)
+
+        # Recalculamos el Digital Twin acá también. Importante: el valor
+        # real del signo vital NO vuelve a la normalidad de golpe al
+        # resolver -- recién ahora arranca _estabilizar_signo_vital, que
+        # tarda ~90s en llevarlo de a poco al rango normal. Por eso el
+        # twin no puede saltar directo a "normal": tiene que quedarse en
+        # la severidad de ESTA alerta (o en una peor, si el paciente
+        # tiene otra alerta activa de otro signo) hasta que las
+        # mediciones de la estabilización lo bajen paso a paso.
+        digital_twin = await db.scalar(
+            select(DigitalTwin)
+            .where(DigitalTwin.paciente_id == alerta.paciente_id)
+            .with_for_update()
+        )
+        if digital_twin is not None:
+            nueva_severidad_twin = await _calcular_severidad_actual_paciente(
+                db, alerta.paciente_id
+            )
+            if digital_twin.severidad_actual != nueva_severidad_twin:
+                digital_twin.severidad_actual = nueva_severidad_twin
+
         await db.commit()
 
         # Publicamos DESPUÉS del commit, con los datos ya confirmados.
