@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "../services/apiFetch";
 import { COLOR_SEVERIDAD } from "../constants/severidad";
-import type { Paciente } from "../types/pacientes";
+import { usePacientes } from "../hooks/usePacientes";
 import type { TipoSignoVital } from "../types/clinico";
 
 // Panel global del simulador: vive en Layout, por eso aparece tanto en
@@ -157,15 +157,17 @@ interface SimuladorPanelProps {
 }
 
 function SimuladorPanel({ abierto, alAbrir, alCerrar }: SimuladorPanelProps) {
-  const [pacientes, setPacientes] = useState<Paciente[]>([]);
-  const [cargandoPacientes, setCargandoPacientes] = useState(true);
+  // Antes este panel tenía su propio fetch de /pacientes, separado del
+  // resto de la app -- por eso quedaba con una foto vieja mientras el
+  // Dashboard sí se actualizaba en vivo. Usando el mismo hook que usa
+  // el Dashboard, el panel hereda gratis la suscripción al WebSocket
+  // (ver usePacientes.ts) y ambas vistas quedan sincronizadas siempre.
+  const { data: pacientes, loading: cargandoPacientes } = usePacientes();
 
   const [tipos, setTipos] = useState<TipoSignoVital[]>([]);
   const [cargandoTipos, setCargandoTipos] = useState(true);
 
-  const [pacienteSeleccionadoId, setPacienteSeleccionadoId] = useState<
-    string | null
-  >(null);
+  const [pacienteSeleccionadoId, setPacienteSeleccionadoId] = useState<string | null>(null);
 
   // Un estado de botón por tipo_signo_id, para dar feedback puntual
   // sin bloquear el resto del panel mientras un solo click está en vuelo.
@@ -176,12 +178,6 @@ function SimuladorPanel({ abierto, alAbrir, alCerrar }: SimuladorPanelProps) {
     useState<EstadoBoton>("idle");
 
   useEffect(() => {
-    apiFetch("/pacientes")
-      .then((res) => res.json())
-      .then((json: Paciente[]) => setPacientes(json))
-      .catch(() => setPacientes([]))
-      .finally(() => setCargandoPacientes(false));
-
     apiFetch("/tipos-signos-vitales")
       .then((res) => res.json())
       .then((json: TipoSignoVital[]) => setTipos(json))
