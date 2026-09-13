@@ -42,15 +42,16 @@ async def _hay_alerta_resuelta_reciente(
     devuelve True si cayó dentro de la ventana de supresión.
     """
     ultima_resuelta = await db.scalar(
-        select(Alerta)
-        .where(
-            Alerta.paciente_id == paciente_id,
-            Alerta.tipo_signo_id == tipo_signo_id,
-            Alerta.estado == EstadoAlerta.resuelta,
-        )
-        .order_by(Alerta.resuelta_en.desc())
-        .limit(1)
+    select(Alerta)
+    .where(
+        Alerta.paciente_id == paciente_id,
+        Alerta.tipo_signo_id == tipo_signo_id,
+        Alerta.estado == EstadoAlerta.resuelta,
+        Alerta.resuelta_en.isnot(None),  # una "resuelta" sin fecha es un dato corrupto, no cuenta
     )
+    .order_by(Alerta.resuelta_en.desc().nullslast())  # defensa extra por si vuelve a colarse un NULL
+    .limit(1)
+)
 
     if ultima_resuelta is None or ultima_resuelta.resuelta_en is None:
         return False

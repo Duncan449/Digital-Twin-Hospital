@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Alerta } from "../types/clinico";
 import type { Paciente } from "../types/pacientes";
@@ -7,7 +8,15 @@ interface AlertasActivasProps {
   pacientes: Paciente[];
 }
 
+const SEGUNDOS_PARA_ESCALAR = 45;
+
 function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
+  const [ahora, setAhora] = useState(() => Date.now());
+  useEffect(() => {
+    const intervalo = setInterval(() => setAhora(Date.now()), 5000);
+    return () => clearInterval(intervalo);
+  }, []);
+
   if (alertas.length === 0) return null;
 
   return (
@@ -51,12 +60,54 @@ function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
       >
         {alertas.map((alerta) => {
           const paciente = pacientes.find((p) => p.id === alerta.paciente_id);
+          const segundosSinAtender =
+            (ahora - new Date(alerta.creada_en).getTime()) / 1000;
+          const estaEscalada = segundosSinAtender >= SEGUNDOS_PARA_ESCALAR;
+
           return (
-            <li key={alerta.id}>
+            <li
+              key={alerta.id}
+              style={{
+                borderRadius: "8px",
+                padding: estaEscalada ? "5px 8px" : "0",
+                background: estaEscalada
+                  ? "var(--tint-escalada)"
+                  : "transparent",
+                border: estaEscalada
+                  ? "1px solid var(--border-escalada)"
+                  : "1px solid transparent",
+              }}
+            >
               <Link
                 to={`/pacientes/${alerta.paciente_id}`}
-                style={{ color: "var(--text)", fontSize: "13px" }}
+                style={{
+                  color: "var(--text)",
+                  fontSize: "13px",
+                  display: "flex",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "6px",
+                }}
               >
+                {estaEscalada && (
+                  <span
+                    style={{
+                      fontFamily: "var(--mono)",
+                      fontSize: "9px",
+                      fontWeight: 700,
+                      letterSpacing: ".08em",
+                      color: "var(--color-escalada)",
+                      background: "var(--tint-escalada)",
+                      border: "1px solid var(--border-escalada)",
+                      borderRadius: "4px",
+                      padding: "2px 6px",
+                      animation: "critblink 1.4s ease-in-out infinite",
+                      flex: "none",
+                    }}
+                  >
+                    SIN ATENDER
+                  </span>
+                )}
                 <span
                   style={{ color: "var(--color-critica)", fontWeight: 600 }}
                 >
@@ -66,16 +117,6 @@ function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
                 </span>
                 {" — "}
                 {alerta.severidad} ({alerta.valor_detectado ?? "?"})
-                {alerta.workflow_id_temporal === null && (
-                  <span
-                    style={{
-                      marginLeft: "6px",
-                      fontFamily: "var(--mono)",
-                      fontSize: "10.5px",
-                      color: "var(--text-muted)",
-                    }}
-                  ></span>
-                )}
               </Link>
             </li>
           );
