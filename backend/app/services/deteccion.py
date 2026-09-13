@@ -2,10 +2,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.clinico import Alerta, Evento, TipoSignoVital
+from app.models.clinico import Alerta, Evento, SignoVital, TipoSignoVital
 from app.models.enums import EstadoAlerta, NivelSeveridad, TipoEvento
 from app.models.pacientes import DigitalTwin
 
@@ -16,6 +16,15 @@ from app.models.pacientes import DigitalTwin
 # automática (ver PASOS_ESTABILIZACION / INTERVALO_ESTABILIZACION_SEG
 # en temporal/activities.py) para que esta ventana la cubra por completo.
 VENTANA_SUPRESION_SEG = 110
+
+# Orden de gravedad para comparar severidades -- mayor índice = más grave.
+_ORDEN_SEVERIDAD = [NivelSeveridad.normal, NivelSeveridad.precaucion, NivelSeveridad.critica]
+
+
+def _severidad_maxima(a: NivelSeveridad, b: NivelSeveridad) -> NivelSeveridad:
+    """Compara dos severidades y devuelve la más grave de las dos."""
+    return max((a, b), key=lambda s: _ORDEN_SEVERIDAD.index(s))
+
 
 def evaluar_severidad(valor: Decimal, tipo_signo: TipoSignoVital) -> NivelSeveridad:
     """
@@ -60,6 +69,48 @@ async def _hay_alerta_resuelta_reciente(
     )
 
 
+async def _calcular_severidad_actual_paciente(
+    db: AsyncSession, paciente_id: uuid.UUID
+) -> NivelSeveridad:
+    """
+    Severidad real del paciente en este instante: para CADA tipo de
+    signo vital, evalúa la severidad de su medición más reciente, y
+    devuelve la más grave entre todas.
+
+    A diferencia de mirar la tabla de Alertas, esto no depende de si
+    existe o no una Alerta activa (que puede estar suprimida durante la
+    ventana post-intervención, o ya resuelta aunque el valor real
+    todavía no volvió a la normalidad) -- siempre refleja el estado
+    físico actual de cada signo, sin que la medición de uno pueda pisar
+    el estado de otro.
+    """
+    ultima_medicion_por_tipo = (
+        select(
+            SignoVital.tipo_signo_id,
+            func.max(SignoVital.medido_en).label("medido_en"),
+        )
+        .where(SignoVital.paciente_id == paciente_id)
+        .group_by(SignoVital.tipo_signo_id)
+        .subquery()
+    )
+
+    resultado = await db.execute(
+        select(SignoVital, TipoSignoVital)
+        .join(TipoSignoVital, SignoVital.tipo_signo_id == TipoSignoVital.id)
+        .join(
+            ultima_medicion_por_tipo,
+            (SignoVital.tipo_signo_id == ultima_medicion_por_tipo.c.tipo_signo_id)
+            & (SignoVital.medido_en == ultima_medicion_por_tipo.c.medido_en),
+        )
+        .where(SignoVital.paciente_id == paciente_id)
+    )
+
+    peor = NivelSeveridad.normal
+    for signo, tipo in resultado.all():
+        peor = _severidad_maxima(peor, evaluar_severidad(signo.valor, tipo))
+    return peor
+
+
 async def procesar_nueva_medicion(
     db: AsyncSession,
     paciente_id: uuid.UUID,
@@ -74,7 +125,12 @@ async def procesar_nueva_medicion(
     Calcula la severidad con evaluar_severidad(), deja SIEMPRE un Evento
     Si la severidad no es "normal", crea una Alerta nueva o
     actualiza la que ya esté activa para ese paciente + tipo de
-    signo. Actualiza digital_twins.severidad_actual SOLO si cambió.
+    signo. Actualiza digital_twins.severidad_actual con la más grave
+    entre: (a) todas las alertas activas del paciente, y (b) la
+    severidad de ESTA medición puntual -- (b) es necesario porque, dentro
+    de la ventana de supresión post-intervención, una medición fuera de
+    rango no genera ni actualiza ninguna Alerta, pero el twin igual tiene
+    que reflejar que el signo real todavía no volvió a la normalidad.
 
     No hace commit: eso queda a cargo de quien llama, para que la
     medición, el evento, la alerta y el digital twin se guarden como una
@@ -151,12 +207,26 @@ async def procesar_nueva_medicion(
                 severidad=severidad,
             ))
 
-    # Digital Twin: actualizar severidad_actual solo si cambió
+    # Flush explícito: nos aseguramos de que la Alerta recién creada o
+    # actualizada arriba ya esté visible para el SELECT de
+    # _calcular_severidad_maxima_activa, sin depender del autoflush
+    # implícito de la sesión.
+    await db.flush()
+
+    # Digital Twin: severidad_actual = la más grave entre las alertas
+    # ACTIVAS del paciente y la severidad de esta medición puntual.
     digital_twin = await db.scalar(
-        select(DigitalTwin).where(DigitalTwin.paciente_id == paciente_id)
+        select(DigitalTwin)
+        .where(DigitalTwin.paciente_id == paciente_id)
+        .with_for_update()
     )
-    if digital_twin is not None and digital_twin.severidad_actual != severidad:
-        digital_twin.severidad_actual = severidad
+    if digital_twin is not None:
+        severidad_alertas_activas = await _calcular_severidad_actual_paciente(
+            db, paciente_id
+        )
+        nueva_severidad_twin = _severidad_maxima(severidad_alertas_activas, severidad)
+        if digital_twin.severidad_actual != nueva_severidad_twin:
+            digital_twin.severidad_actual = nueva_severidad_twin
 
     await db.flush()
 
