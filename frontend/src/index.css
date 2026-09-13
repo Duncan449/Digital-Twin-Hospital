@@ -24,10 +24,15 @@
   --tint-normal: rgba(16, 185, 129, 0.12);
   --tint-precaucion: rgba(245, 158, 11, 0.12);
   --tint-critica: rgba(239, 68, 68, 0.14);
+  --tint-accent: rgba(56, 189, 248, 0.16);
 
   --border-normal: rgba(16, 185, 129, 0.45);
   --border-precaucion: rgba(245, 158, 11, 0.45);
   --border-critica: rgba(239, 68, 68, 0.6);
+
+  --color-escalada: #f472b6;
+  --tint-escalada: rgba(244, 114, 182, 0.14);
+  --border-escalada: rgba(244, 114, 182, 0.5);
 
   --color-alta: #64748b;
   --tint-alta: rgba(100, 116, 139, 0.12);

@@ -31,6 +31,9 @@ function VitalMiniStat({ etiqueta, valor, unidad, color }: VitalMiniStatProps) {
           fontSize: "19px",
           fontWeight: 600,
           color,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
         {valor}

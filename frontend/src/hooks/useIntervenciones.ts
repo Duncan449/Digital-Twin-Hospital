@@ -5,19 +5,57 @@ import type {
 } from "../types/intervencion";
 import { apiFetch } from "../services/apiFetch";
 
+// Lógica pura de UNA llamada, sin tocar estado de React. La reusan tanto
+// enviarIntervencion (una alerta) como enviarIntervencionATodas (N alertas
+// en paralelo), para no duplicar este bloque en dos lugares.
+//
+// Validamos "accion" vacío ACÁ (client-side) porque el schema Pydantic
+// IntervencionCrear (accion: str) no rechaza string vacío del lado del
+// backend -- sin este chequeo, un POST con accion="" pasaría igual.
+async function intentarIntervencion(
+  alertaId: string,
+  datos: IntervencionCrear,
+): Promise<IntervencionRespuesta> {
+  if (!datos.accion.trim()) {
+    throw new Error("La acción tomada es obligatoria.");
+  }
+
+  const respuesta = await apiFetch(`/alertas/${alertaId}/intervenciones`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(datos),
+  });
+
+  if (!respuesta.ok) {
+    if (respuesta.status === 409) {
+      throw new Error("Esta alerta ya fue resuelta por otra intervención.");
+    }
+    throw new Error(
+      `No se pudo registrar la intervención para la alerta ${alertaId}.`,
+    );
+  }
+
+  return (await respuesta.json()) as IntervencionRespuesta;
+}
+
+export interface ResultadoIntervencionMultiple {
+  exitosas: IntervencionRespuesta[];
+  fallidas: string[]; // ids de alerta que no se pudieron resolver
+}
+
 interface UseIntervencionesResultado {
   enviarIntervencion: (
     alertaId: string,
     datos: IntervencionCrear,
   ) => Promise<IntervencionRespuesta | null>;
+  enviarIntervencionATodas: (
+    alertaIds: string[],
+    datos: IntervencionCrear,
+  ) => Promise<ResultadoIntervencionMultiple>;
   enviando: boolean;
   error: string | null;
 }
 
-// A diferencia de useAlertas/useEventos (hooks de LECTURA que cargan
-// solos al montar), este es un hook de ESCRITURA: no expone {data},
-// expone una función para disparar la acción cuando el usuario confirma
-// el formulario, más el estado de esa acción puntual (enviando/error).
 export function useIntervenciones(): UseIntervencionesResultado {
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,28 +67,7 @@ export function useIntervenciones(): UseIntervencionesResultado {
     setEnviando(true);
     setError(null);
     try {
-      // El schema Pydantic (accion: str) NO rechaza un string vacío --
-      // Pydantic v2 no valida "no vacío" salvo min_length explícito.
-      // Esta validación es la única barrera real contra una
-      // intervención sin acción, y hay que conservarla del lado del
-      // cliente aunque IntervencionModal ya deshabilite el botón en
-      // ese caso (defensa en profundidad: este hook podría reusarse
-      // en otro componente que no tenga ese mismo chequeo).
-      if (!datos.accion.trim()) {
-        throw new Error("La acción tomada es obligatoria.");
-      }
-
-      const respuesta = await apiFetch(`/alertas/${alertaId}/intervenciones`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(datos),
-      });
-
-      if (!respuesta.ok) {
-        throw new Error("No se pudo registrar la intervención.");
-      }
-
-      return (await respuesta.json()) as IntervencionRespuesta;
+      return await intentarIntervencion(alertaId, datos);
     } catch (err) {
       const mensaje =
         err instanceof Error
@@ -63,5 +80,43 @@ export function useIntervenciones(): UseIntervencionesResultado {
     }
   }
 
-  return { enviarIntervencion, enviando, error };
+  // Dispara una intervención por cada alerta activa del paciente, en
+  // paralelo. No es atómico entre alertas -- cada POST es independiente,
+  // igual que ya son independientes las alertas en el backend -- por eso
+  // se reportan éxitos y fallos por separado en vez de todo-o-nada.
+  async function enviarIntervencionATodas(
+    alertaIds: string[],
+    datos: IntervencionCrear,
+  ): Promise<ResultadoIntervencionMultiple> {
+    setEnviando(true);
+    setError(null);
+
+    const resultados = await Promise.allSettled(
+      alertaIds.map((alertaId) => intentarIntervencion(alertaId, datos)),
+    );
+
+    const exitosas: IntervencionRespuesta[] = [];
+    const fallidas: string[] = [];
+
+    resultados.forEach((resultado, indice) => {
+      if (resultado.status === "fulfilled") {
+        exitosas.push(resultado.value);
+      } else {
+        fallidas.push(alertaIds[indice]);
+      }
+    });
+
+    if (fallidas.length > 0) {
+      setError(
+        exitosas.length > 0
+          ? `Se registraron ${exitosas.length} de ${alertaIds.length} intervenciones. ${fallidas.length} no se pudieron guardar.`
+          : "No se pudo registrar ninguna intervención.",
+      );
+    }
+
+    setEnviando(false);
+    return { exitosas, fallidas };
+  }
+
+  return { enviarIntervencion, enviarIntervencionATodas, enviando, error };
 }
