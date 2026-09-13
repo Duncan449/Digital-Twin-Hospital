@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Paciente } from "../types/pacientes";
 import { apiFetch } from "../services/apiFetch";
 import { useEventosWebSocket } from "../context/EventosWebSocketContext";
@@ -7,21 +7,12 @@ interface UsePacientesResultado {
   data: Paciente[];
   loading: boolean;
   error: string | null;
+  // Expuesto para que quien cree/edite/dé de alta a un paciente (en un
+  // modal aparte, ver PacienteFormModal) pueda refrescar la lista sin
+  // que este hook necesite saber nada de esas acciones.
+  recargar: () => void;
 }
 
-// Eventos que pueden significar un cambio en digital_twin.severidad_actual:
-// - alerta_generada/actualizada: una medición dispara o actualiza una alerta.
-// - medicion_registrada: se dispara en TODA medición, incluida la
-//   estabilización post-intervención.
-//
-// A propósito NO tratamos de derivar la nueva severidad de ningún campo
-// del evento (ej. "severidad_calculada"): ese campo es la severidad del
-// SIGNO puntual que se acaba de medir, no la del paciente en su
-// conjunto -- confundir esos dos valores fue justo el bug (una medición
-// normal de un signo distinto pisaba el estado crítico de otro). El
-// backend (deteccion.py) ya calcula correctamente severidad_actual como
-// el máximo entre todas las alertas activas del paciente; acá solo le
-// preguntamos ese resultado ya calculado, en vez de reinventarlo.
 const TIPOS_SEVERIDAD = new Set([
   "alerta_generada",
   "alerta_actualizada",
@@ -33,6 +24,13 @@ export function usePacientes(): UsePacientesResultado {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const { suscribir } = useEventosWebSocket();
+  // Cambiar este número es la señal para que el useEffect de abajo
+  // vuelva a correr y pida los pacientes de nuevo.
+  const [version, setVersion] = useState(0);
+
+  const recargar = useCallback(() => {
+    setVersion((v) => v + 1);
+  }, []);
 
   useEffect(() => {
     const controlador = new AbortController();
@@ -67,7 +65,7 @@ export function usePacientes(): UsePacientesResultado {
     cargarPacientes();
 
     return () => controlador.abort();
-  }, []);
+  }, [version]);
 
   useEffect(() => {
     return suscribir((evento) => {
@@ -99,5 +97,5 @@ export function usePacientes(): UsePacientesResultado {
     });
   }, [suscribir]);
 
-  return { data, loading, error };
+  return { data, loading, error, recargar };
 }

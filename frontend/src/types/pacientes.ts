@@ -14,6 +14,7 @@ export interface Paciente {
   documento: string;
   fecha_nacimiento: string; // formato "YYYY-MM-DD" (date de Python -> string)
   estado: EstadoPaciente;
+  genero: string | null;
   sala: string | null;
   cama: string | null;
   fecha_ingreso: string; // ISO datetime string
@@ -30,3 +31,20 @@ export interface DigitalTwin {
   ultima_actualizacion: string;
   creado_en: string;
 }
+
+// Espeja PacienteCrear del backend: lo que se manda en el POST.
+// Sin id ni estado, que el backend genera automáticamente.
+export interface PacienteCrear {
+  nombre: string;
+  apellido: string;
+  documento: string;
+  fecha_nacimiento: string; // "YYYY-MM-DD", lo que espera un <input type="date">
+  genero?: string | null;
+  sala?: string | null;
+  cama?: string | null;
+}
+
+// Espeja PacienteActualizar del backend: PATCH parcial, todo opcional.
+// Partial<> porque el modal reutiliza los mismos campos que PacienteCrear
+// para editar, salvo que acá ninguno es obligatorio.
+export type PacienteActualizar = Partial<PacienteCrear>;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { Paciente } from "../types/pacientes";
 import { apiFetch } from "../services/apiFetch";
 
@@ -6,12 +6,20 @@ interface UsePacienteResultado {
   data: Paciente | null;
   loading: boolean;
   error: string | null;
+  // Igual que en usePacientes: permite refrescar este paciente puntual
+  // después de editarlo o darlo de alta desde PacienteFormModal.
+  recargar: () => void;
 }
 
 export function usePaciente(pacienteId: string): UsePacienteResultado {
   const [data, setData] = useState<Paciente | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [version, setVersion] = useState(0);
+
+  const recargar = useCallback(() => {
+    setVersion((v) => v + 1);
+  }, []);
 
   useEffect(() => {
     const controlador = new AbortController();
@@ -55,7 +63,7 @@ export function usePaciente(pacienteId: string): UsePacienteResultado {
     cargarPaciente();
 
     return () => controlador.abort();
-  }, [pacienteId]);
+  }, [pacienteId, version]);
 
-  return { data, loading, error };
+  return { data, loading, error, recargar };
 }
