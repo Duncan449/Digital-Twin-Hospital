@@ -202,6 +202,39 @@ function DigitalTwinView() {
                 : `${alertasActivasDelPaciente.length} alertas activas`}
             </button>
           )}
+          
+          <button
+            onClick={() => setModalEdicionAbierto(true)}
+            style={{
+              padding: "9px 16px",
+              borderRadius: 9,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-h)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Editar
+          </button>
+          {paciente.data.estado === "internado" && (
+            <button
+              onClick={() => setModalAltaAbierto(true)}
+              style={{
+                padding: "9px 16px",
+                borderRadius: 9,
+                border: "1px solid var(--border-alta)",
+                background: "var(--tint-alta)",
+                color: "var(--color-alta)",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Dar de alta
+            </button>
+          )}
           <SeveridadBadge severidad={severidad} />
         </div>
       </div>
