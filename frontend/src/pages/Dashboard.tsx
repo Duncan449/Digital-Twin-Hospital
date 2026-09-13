@@ -39,7 +39,7 @@ function Dashboard() {
           flexWrap: "wrap",
         }}
       >
-        <h1>Dashboard</h1>
+        <h1></h1>
         <button
           onClick={() => setModalAbierto(true)}
           style={{
@@ -59,9 +59,13 @@ function Dashboard() {
       </div>
 
       <AlertasActivas
+       
         alertas={alertas}
+       
         pacientes={pacientes}
+       
         tiposSignosVitales={tiposSignosVitales}
+     
       />
       <KpiPanel pacientes={pacientes} />
       <div className="dashboard-grid">

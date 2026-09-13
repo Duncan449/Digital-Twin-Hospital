@@ -15,7 +15,11 @@ import ConfirmModal from "../components/ConfirmModal";
 import { usePacienteForm } from "../hooks/usePacienteForm";
 import { BORDE_SEVERIDAD, GLOW_SEVERIDAD } from "../constants/severidad";
 import type { SignoVital } from "../types/clinico";
-import type { IntervencionRespuesta } from "../types/intervencion";
+import type { NivelSeveridad } from "../types/enums";
+import {
+  calcularSeveridadSigno,
+  severidadMasAlta,
+} from "../utils/severidadSigno";
 import type { Paciente } from "../types/pacientes";
 
 const VENTANA_GRAFICO_MS = 2 * 60 * 60 * 1000; // gráfico de 24 horas
@@ -52,16 +56,22 @@ function DigitalTwinView() {
     return <p style={{ padding: 22 }}>Error: {paciente.error}</p>;
   if (!paciente.data) return null;
 
-  const severidad = paciente.data.digital_twin.severidad_actual;
-
-  const alertaActiva = alertas.data.find(
+  // TODAS las alertas activas del paciente, no solo la primera -- un
+  // paciente puede tener varios signos vitales fuera de rango a la vez,
+  // y cada uno es una fila de Alerta separada en el backend (dedupe por
+  // paciente_id + tipo_signo_id).
+  const alertasActivasDelPaciente = alertas.data.filter(
     (a) => a.paciente_id === pacienteId && !alertasIntervenidas.has(a.id),
   );
 
-  function manejarExitoIntervencion(resultado: IntervencionRespuesta) {
+  // El modal puede resolver menos alertas de las que se le pidieron (si
+  // alguna llamada falla), así que acá solo sumamos al set las que
+  // efectivamente se resolvieron. Cerrar el modal es responsabilidad del
+  // propio IntervencionModal -- solo lo hace cuando TODAS salieron bien.
+  function manejarExitoIntervencion(alertaIdsResueltos: string[]) {
     setAlertasIntervenidas((previas) => {
       const siguientes = new Set(previas);
-      siguientes.add(resultado.alerta_id);
+      alertaIdsResueltos.forEach((idAlerta) => siguientes.add(idAlerta));
       return siguientes;
     });
     setModalAbierto(false);
@@ -99,6 +109,19 @@ function DigitalTwinView() {
     lista.sort((a, b) => (a.medido_en < b.medido_en ? -1 : 1));
   }
 
+  let severidad: NivelSeveridad = paciente.data.digital_twin.severidad_actual;
+  if (!tiposSignosVitales.loading) {
+    severidad = tiposSignosVitales.data.reduce((peor, tipo) => {
+      const historial = historialPorTipo.get(tipo.id) ?? [];
+      const ultima = historial[historial.length - 1];
+      if (!ultima) return peor;
+      return severidadMasAlta(
+        peor,
+        calcularSeveridadSigno(Number(ultima.valor), tipo),
+      );
+    }, "normal" as NivelSeveridad);
+  }
+
   return (
     <div style={{ padding: "20px 22px 34px" }}>
       <div
@@ -126,7 +149,7 @@ function DigitalTwinView() {
             textDecoration: "none",
           }}
         >
-          ← Dashboard
+          {"⟵ Dashboard"}
         </Link>
         <div
           style={{
@@ -159,7 +182,7 @@ function DigitalTwinView() {
             gap: 10,
           }}
         >
-          {alertaActiva && (
+          {alertasActivasDelPaciente.length > 0 && (
             <button
               onClick={() => setModalAbierto(true)}
               style={{
@@ -173,39 +196,10 @@ function DigitalTwinView() {
                 cursor: "pointer",
               }}
             >
-              Intervenir alerta activa
-            </button>
-          )}
-          <button
-            onClick={() => setModalEdicionAbierto(true)}
-            style={{
-              padding: "9px 16px",
-              borderRadius: 9,
-              border: "1px solid var(--border)",
-              background: "transparent",
-              color: "var(--text-h)",
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
-          >
-            Editar
-          </button>
-          {paciente.data.estado === "internado" && (
-            <button
-              onClick={() => setModalAltaAbierto(true)}
-              style={{
-                padding: "9px 16px",
-                borderRadius: 9,
-                border: "1px solid var(--border-alta)",
-                background: "var(--tint-alta)",
-                color: "var(--color-alta)",
-                fontSize: 13,
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              Dar de alta
+              Intervenir{" "}
+              {alertasActivasDelPaciente.length === 1
+                ? "alerta activa"
+                : `${alertasActivasDelPaciente.length} alertas activas`}
             </button>
           )}
           <SeveridadBadge severidad={severidad} />
@@ -326,10 +320,10 @@ function DigitalTwinView() {
         </div>
       </div>
 
-      {alertaActiva && (
+      {alertasActivasDelPaciente.length > 0 && (
         <IntervencionModal
           abierto={modalAbierto}
-          alerta={alertaActiva}
+          alertas={alertasActivasDelPaciente}
           paciente={paciente.data}
           onCerrar={() => setModalAbierto(false)}
           onExito={manejarExitoIntervencion}

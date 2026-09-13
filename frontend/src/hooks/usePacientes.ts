@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Paciente } from "../types/pacientes";
 import { apiFetch } from "../services/apiFetch";
+import { useEventosWebSocket } from "../context/EventosWebSocketContext";
 
 interface UsePacientesResultado {
   data: Paciente[];
@@ -12,10 +13,17 @@ interface UsePacientesResultado {
   recargar: () => void;
 }
 
+const TIPOS_SEVERIDAD = new Set([
+  "alerta_generada",
+  "alerta_actualizada",
+  "medicion_registrada",
+]);
+
 export function usePacientes(): UsePacientesResultado {
   const [data, setData] = useState<Paciente[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const { suscribir } = useEventosWebSocket();
   // Cambiar este número es la señal para que el useEffect de abajo
   // vuelva a correr y pida los pacientes de nuevo.
   const [version, setVersion] = useState(0);
@@ -58,6 +66,36 @@ export function usePacientes(): UsePacientesResultado {
 
     return () => controlador.abort();
   }, [version]);
+
+  useEffect(() => {
+    return suscribir((evento) => {
+      if (!TIPOS_SEVERIDAD.has(evento.tipo)) return;
+
+      // Le preguntamos al backend el estado real y ya calculado de ESE
+      // paciente puntual, en vez de tratar de derivarlo nosotros del
+      // contenido del evento. Es un fetch chico (un solo paciente), y
+      // es la única forma de estar seguros de que coincide con lo que
+      // deteccion.py acaba de commitear.
+      apiFetch(`/pacientes/${evento.paciente_id}`)
+        .then((respuesta) => {
+          if (!respuesta.ok) return null;
+          return respuesta.json() as Promise<Paciente>;
+        })
+        .then((pacienteActualizado) => {
+          if (!pacienteActualizado) return;
+          setData((previos) =>
+            previos.map((p) =>
+              p.id === pacienteActualizado.id ? pacienteActualizado : p,
+            ),
+          );
+        })
+        .catch(() => {
+          // Best-effort: si este fetch puntual falla, el paciente
+          // simplemente se queda con el valor anterior hasta el
+          // próximo evento -- no rompemos el resto del Dashboard por esto.
+        });
+    });
+  }, [suscribir]);
 
   return { data, loading, error, recargar };
 }

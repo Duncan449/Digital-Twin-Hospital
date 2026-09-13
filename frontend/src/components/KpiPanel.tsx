@@ -9,6 +9,7 @@ interface Kpi {
   valor: number;
   sub: string;
   color: string;
+  tint: string;
 }
 
 function KpiPanel({ pacientes }: KpiPanelProps) {
@@ -29,26 +30,30 @@ function KpiPanel({ pacientes }: KpiPanelProps) {
     {
       etiqueta: "PACIENTES ACTIVOS",
       valor: activos.length,
-      sub: `En total`,
+      sub: `en total`,
       color: "var(--accent)",
+      tint: "var(--tint-accent)",
     },
     {
       etiqueta: "CRÍTICOS",
       valor: criticos,
-      sub: "intervención",
+      sub: "requieren intervención",
       color: "var(--color-critica)",
+      tint: "var(--tint-accent)",
     },
     {
       etiqueta: "PRECAUCIÓN",
       valor: precaucion,
-      sub: "vigilancia",
+      sub: "requieren vigilancia",
       color: "var(--color-precaucion)",
+      tint: "var(--tint-accent)",
     },
     {
       etiqueta: "ESTABLES",
       valor: estables,
-      sub: "en rango",
+      sub: "en total",
       color: "var(--color-normal)",
+      tint: "var(--tint-accent)",
     },
   ];
 
@@ -62,14 +67,17 @@ function KpiPanel({ pacientes }: KpiPanelProps) {
       }}
     >
       {kpis.map((kpi) => (
+        // Ahora:
         <div
           key={kpi.etiqueta}
           style={{
             padding: "14px 16px",
             borderRadius: "12px",
+            overflow: "hidden",
             background: "var(--bg-panel-alt)",
             border: "1px solid var(--border)",
             borderLeft: `3px solid ${kpi.color}`,
+            boxShadow: `0 0 0 1px rgba(0,0,0,.4), 0 0 18px ${kpi.tint}`,
           }}
         >
           <div

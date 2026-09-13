@@ -39,7 +39,13 @@ function VitalSignCard({ tipo, ultimaMedicion }: VitalSignCardProps) {
   // valor y los rango_* llegan como string (Decimal de Postgres vía
   // FastAPI) -- convertimos acá, en el borde del componente, para que
   // el resto de las cuentas trabaje con number sin sorpresas.
+  // Ahora: redondeamos para mostrar -- temperatura mantiene 1 decimal
+  // (es el estándar clínico, 36.7°C), el resto se muestra entero.
   const valor = Number(ultimaMedicion.valor);
+  const valorMostrado =
+    tipo.nombre === "temperatura_corporal"
+      ? valor.toFixed(1)
+      : Math.round(valor).toString();
   const rangoNormalMin = Number(tipo.rango_normal_min);
   const rangoNormalMax = Number(tipo.rango_normal_max);
   const rangoCriticoMin = Number(tipo.rango_critico_min);
@@ -90,6 +96,7 @@ function VitalSignCard({ tipo, ultimaMedicion }: VitalSignCardProps) {
           alignItems: "baseline",
           gap: 7,
           marginTop: 8,
+          minWidth: 0,
         }}
       >
         <span
@@ -105,13 +112,14 @@ function VitalSignCard({ tipo, ultimaMedicion }: VitalSignCardProps) {
                 : "none",
           }}
         >
-          {valor}
+          {valorMostrado}
         </span>
         <span
           style={{
             fontFamily: "'IBM Plex Mono', monospace",
             fontSize: 13,
             color: "#6B819F",
+            flexShrink: 0,
           }}
         >
           {tipo.unidad}
