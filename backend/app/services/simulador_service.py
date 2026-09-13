@@ -13,25 +13,13 @@ from app.schemas.simulador import PatronSimulacion, SimulacionCrear
 from app.services.pacientes_service import obtener_paciente
 from app.services.signos_vitales_service import registrar_signo_vital
 from app.services.tipos_signos_vitales_service import obtener_tipo_signo_vital
+from app.utils.series import generar_serie_lineal
 
 # Piso de seguridad: SignoVitalCrear valida valor > 0 (Field(gt=0)). Sin
 # este piso, el ruido aleatorio del patrón "ruido" podría alguna vez
 # restar de más y generar un valor <= 0, que el schema rechazaría a
 # mitad de la simulación.
 VALOR_MINIMO_ABSOLUTO = Decimal("0.01")
-
-
-def generar_serie_lineal(
-    valor_inicial: Decimal, valor_final: Decimal, cantidad_pasos: int
-) -> list[Decimal]:
-    """
-    Usamos interpolación lineal simple para repartir 'cantidad_pasos' valores
-    equidistantes entre valor_inicial y valor_final (ambos incluidos).
-    Ej: generar_serie(37.0, 40.0, 4) -> [37.0, 38.0, 39.0, 40.0]
-    """
-    paso = (valor_final - valor_inicial) / (cantidad_pasos - 1)
-    return [valor_inicial + paso * i for i in range(cantidad_pasos)]
-
 
 def generar_serie_zigzag(
     valor_inicial: Decimal, valor_final: Decimal, cantidad_pasos: int

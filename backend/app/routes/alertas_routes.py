@@ -7,7 +7,7 @@ from app.config.database import get_db
 from app.models.enums import EstadoAlerta
 from app.schemas.alertas import AlertaRespuesta
 from app.schemas.intervenciones import IntervencionRespuesta
-from app.services.alertas_service import listar_alertas, listar_alertas_paciente, obtener_alerta
+from app.services.alertas_service import listar_alertas, listar_alertas_paciente, obtener_alerta, obtener_estado_workflow_alerta
 from app.services.intervenciones_service import estabilizar_todas_las_alertas_activas
 
 router = APIRouter(prefix="/alertas", tags=["Alertas"])
@@ -47,3 +47,11 @@ async def listar_alertas_paciente_endpoint(
 ):
     """Historial completo de alertas de un paciente puntual, más reciente primero."""
     return await listar_alertas_paciente(db, paciente_id)
+
+@router.get("/{alerta_id}/estado-workflow")
+async def obtener_estado_workflow_endpoint(
+    alerta_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Estado en vivo del workflow de Temporal para esta alerta (panel Fase 6)."""
+    return await obtener_estado_workflow_alerta(db, alerta_id)

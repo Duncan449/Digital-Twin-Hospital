@@ -1,29 +1,17 @@
-import asyncio 
 import uuid
-from sqlalchemy import select
 from datetime import datetime, timezone
 from decimal import Decimal
 
+from sqlalchemy import select
 from temporalio import activity
 
 from app.config.database import AsyncSessionLocal
 from app.models.clinico import Alerta, Evento, TipoSignoVital
-from app.models.enums import EstadoAlerta, TipoEvento
-from app.websockets.eventos import publicar_evento
+from app.models.enums import EstadoAlerta, OrigenMedicion, TipoEvento
 from app.models.pacientes import DigitalTwin
+from app.schemas.signos_vitales import SignoVitalCrear
 from app.services.deteccion import _calcular_severidad_actual_paciente
-
-
-# Cuántos pasos y cuánto tiempo tarda la estabilización automática que se
-# dispara tras resolver una alerta. Se mantiene corta a propósito: debe
-# entrar cómoda dentro de VENTANA_SUPRESION_SEG (deteccion.py, 110s por
-# defecto) para que ningún paso intermedio dispare una alerta nueva.
-# 6 pasos x 15s = ~90s de margen real.
-PASOS_ESTABILIZACION = 6
-INTERVALO_ESTABILIZACION_SEG = 15
-
-# Referencias a las Task de estabilización en curso.
-_tareas_estabilizacion: set[asyncio.Task] = set()
+from app.websockets.eventos import publicar_evento
 
 
 async def _publicar_evento_seguro(paciente_id: str, tipo: str, data: dict) -> None:
@@ -38,57 +26,6 @@ async def _publicar_evento_seguro(paciente_id: str, tipo: str, data: dict) -> No
             f"No se pudo publicar el evento '{tipo}' en Redis (¿está caído?): {error}"
         )
 
-
-async def _estabilizar_signo_vital(
-    alerta_id: str,
-    paciente_id: uuid.UUID,
-    tipo_signo_id: uuid.UUID,
-    valor_inicial: Decimal,
-) -> None:
-    """
-    Simula el retorno gradual del signo vital a su rango normal tras una
-    intervención, reutilizando el simulador existente (mismo motor de
-    detección que cualquier medición real, vía ejecutar_simulacion).
-
-    Corre desacoplada como su propia Task en vez de ser "esperada (await)" por notificar_resolucion, para no extender
-    el tiempo de ejecución de esa Activity ni depender de su timeout
-    configurado. Por eso mismo abre su propia sesión (indirectamente, a
-    través de ejecutar_simulacion) y atrapa cualquier error acá.
-    """
-    try:
-        # Import diferido para evitar dependencias circulares con simulador_service.py
-        from app.services.simulador_service import (
-            ejecutar_simulacion,
-            generar_serie_lineal,
-        )
-
-        async with AsyncSessionLocal() as db:
-            tipo_signo = await db.get(TipoSignoVital, tipo_signo_id)
-
-        if tipo_signo is None:
-            print(
-                f"Estabilización omitida: no existe el tipo de signo {tipo_signo_id}."
-            )
-            return
-
-        valor_final = (
-            tipo_signo.rango_normal_min + tipo_signo.rango_normal_max
-        ) / Decimal("2")
-
-        valores = generar_serie_lineal(valor_inicial, valor_final, PASOS_ESTABILIZACION)
-
-        await ejecutar_simulacion(
-            paciente_id=paciente_id,
-            tipo_signo_id=tipo_signo_id,
-            valores=valores,
-            intervalo_segundos=INTERVALO_ESTABILIZACION_SEG,
-        )
-    except Exception as error:
-        print(
-            f"No se pudo estabilizar el signo vital tras la alerta {alerta_id}: {error}"
-        )
-
-
 @activity.defn
 async def generar_saludo(nombre: str) -> str:
     """Activity de prueba del hello world inicial. Se deja como referencia."""
@@ -97,8 +34,48 @@ async def generar_saludo(nombre: str) -> str:
 
 
 @activity.defn
-async def notificar_resolucion(alerta_id: str, accion: str, observaciones: str | None) -> str:
-    """Marca la alerta como resuelta en Postgres."""
+async def registrar_escalacion(alerta_id: str, nivel: int) -> str:
+    """
+    Se ejecuta cuando pasa el tiempo límite sin que nadie intervenga.
+    Deja un registro en 'eventos' así queda visible en el historial
+    del paciente/dashboard que esta alerta lleva tiempo sin atenderse.
+
+    Reutilizamos TipoEvento.alerta_actualizada en vez de crear un tipo
+    nuevo (como 'alerta_escalada'), porque agregar un valor a un ENUM
+    de Postgres requiere una migración de Alembic con ALTER TYPE.
+    """
+    async with AsyncSessionLocal() as db:
+        alerta = await db.get(Alerta, uuid.UUID(alerta_id))
+        if alerta is None:
+            raise ValueError(f"No existe una alerta con id '{alerta_id}'.")
+
+        db.add(
+            Evento(
+                paciente_id=alerta.paciente_id,
+                tipo=TipoEvento.alerta_actualizada,
+                descripcion=f"Alerta sin atender (escalación nivel {nivel}): se notifica de nuevo al personal.",
+                severidad=alerta.severidad,
+            )
+        )
+        await db.commit()
+
+        await _publicar_evento_seguro(
+            paciente_id=str(alerta.paciente_id),
+            tipo="alerta_escalada",
+            data={"alerta_id": alerta_id, "nivel": nivel, "severidad": alerta.severidad.value},
+        )
+
+    activity.logger.warning(f"Alerta {alerta_id} escalada a nivel {nivel}.")
+    return f"Escalación nivel {nivel} registrada para alerta {alerta_id}."
+
+
+@activity.defn
+async def marcar_alerta_resuelta(
+    alerta_id: str, accion: str, observaciones: str | None
+) -> dict:
+    """
+    Persiste la resolución en Postgres y recalcula el Digital Twin.
+    """
     async with AsyncSessionLocal() as db:
         alerta = await db.get(Alerta, uuid.UUID(alerta_id))
         if alerta is None:
@@ -107,14 +84,8 @@ async def notificar_resolucion(alerta_id: str, accion: str, observaciones: str |
         alerta.estado = EstadoAlerta.resuelta
         alerta.resuelta_en = datetime.now(timezone.utc)
 
-        # Recalculamos el Digital Twin acá también. Importante: el valor
-        # real del signo vital NO vuelve a la normalidad de golpe al
-        # resolver -- recién ahora arranca _estabilizar_signo_vital, que
-        # tarda ~90s en llevarlo de a poco al rango normal. Por eso el
-        # twin no puede saltar directo a "normal": tiene que quedarse en
-        # la severidad de ESTA alerta (o en una peor, si el paciente
-        # tiene otra alerta activa de otro signo) hasta que las
-        # mediciones de la estabilización lo bajen paso a paso.
+        # El twin no salta a "normal" de golpe: se queda en la
+        # severidad real hasta que la estabilización lo baje paso a paso.
         digital_twin = await db.scalar(
             select(DigitalTwin)
             .where(DigitalTwin.paciente_id == alerta.paciente_id)
@@ -127,14 +98,18 @@ async def notificar_resolucion(alerta_id: str, accion: str, observaciones: str |
             if digital_twin.severidad_actual != nueva_severidad_twin:
                 digital_twin.severidad_actual = nueva_severidad_twin
 
+        tipo_signo = None
+        if alerta.tipo_signo_id is not None:
+            tipo_signo = await db.get(TipoSignoVital, alerta.tipo_signo_id)
+
+        paciente_id = alerta.paciente_id
+        tipo_signo_id = alerta.tipo_signo_id
+        valor_inicial = alerta.valor_detectado
+
         await db.commit()
 
-        # Publicamos DESPUÉS del commit, con los datos ya confirmados.
-        # Este es el evento que hace visible en vivo que el sistema se
-        # recuperó tras la intervención, incluso si el Worker se había
-        # caído y recién ahora retomó el Workflow.
         await _publicar_evento_seguro(
-            paciente_id=str(alerta.paciente_id),
+            paciente_id=str(paciente_id),
             tipo="alerta_resuelta",
             data={
                 "alerta_id": alerta_id,
@@ -143,53 +118,40 @@ async def notificar_resolucion(alerta_id: str, accion: str, observaciones: str |
             },
         )
 
-        # Estabilización automática con mejor esfuerzo, no bloqueante. 
-        if alerta.tipo_signo_id is not None and alerta.valor_detectado is not None:
-            tarea = asyncio.create_task(
-                _estabilizar_signo_vital(
-                    alerta_id=alerta_id,
-                    paciente_id=alerta.paciente_id,
-                    tipo_signo_id=alerta.tipo_signo_id,
-                    valor_inicial=alerta.valor_detectado,
-                )
-            )
-            _tareas_estabilizacion.add(tarea)
-            tarea.add_done_callback(_tareas_estabilizacion.discard)
-
     activity.logger.info(f"Alerta {alerta_id} resuelta en Postgres.")
-    return f"Alerta {alerta_id} marcada como resuelta."
+
+    if tipo_signo is None or valor_inicial is None:
+        return {"paciente_id": str(paciente_id), "tipo_signo_id": None}
+
+    valor_objetivo = (
+        tipo_signo.rango_normal_min + tipo_signo.rango_normal_max
+    ) / Decimal("2")
+    return {
+        "paciente_id": str(paciente_id),
+        "tipo_signo_id": str(tipo_signo_id),
+        "valor_inicial": str(valor_inicial),
+        "valor_objetivo": str(valor_objetivo),
+    }
 
 
 @activity.defn
-async def registrar_escalacion(alerta_id: str) -> str:
+async def aplicar_paso_estabilizacion(
+    paciente_id: str, tipo_signo_id: str, valor: str
+) -> None:
     """
-    Se ejecuta cuando pasa el tiempo límite sin que nadie intervenga.
-    Deja un registro en 'eventos' -- así queda visible en el historial
-    del paciente/dashboard que esta alerta lleva tiempo sin atenderse.
+    UN paso de la rampa de estabilización. Reutiliza registrar_signo_vital,
+    el mismo motor de detección que cualquier medición real, así el
+    paso queda en el historial (Evento). 
+    Cada paso es su propia Activity: si el Worker se cae a mitad de la rampa,
+    Temporal retoma exactamente en el paso que faltaba.
+    """
 
-    Reutilizamos TipoEvento.alerta_actualizada en vez de crear un tipo
-    nuevo (como 'alerta_escalada'), porque agregar un valor a un ENUM
-    de Postgres requiere una migración de Alembic con ALTER TYPE.
-    """
+    from app.services.signos_vitales_service import registrar_signo_vital
+
+    datos = SignoVitalCrear(
+        tipo_signo_id=uuid.UUID(tipo_signo_id),
+        valor=Decimal(valor),
+        origen=OrigenMedicion.simulado,
+    )
     async with AsyncSessionLocal() as db:
-        alerta = await db.get(Alerta, uuid.UUID(alerta_id))
-        if alerta is None:
-            raise ValueError(f"No existe una alerta con id '{alerta_id}'.")
-
-        evento = Evento(
-            paciente_id=alerta.paciente_id,
-            tipo=TipoEvento.alerta_actualizada,
-            descripcion="Alerta sin atender: se escala la notificación al personal.",
-            severidad=alerta.severidad,
-        )
-        db.add(evento)
-        await db.commit()
-        
-        await _publicar_evento_seguro(
-            paciente_id=str(alerta.paciente_id),
-            tipo="alerta_escalada",
-            data={"alerta_id": alerta_id, "severidad": alerta.severidad.value},
-        )
-
-    activity.logger.warning(f"Alerta {alerta_id} sin atender, escalando.")
-    return f"Escalación registrada para alerta {alerta_id}."
+        await registrar_signo_vital(db, uuid.UUID(paciente_id), datos)
