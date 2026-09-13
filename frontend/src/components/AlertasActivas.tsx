@@ -1,16 +1,27 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import type { Alerta } from "../types/clinico";
+import type { Alerta, TipoSignoVital } from "../types/clinico";
 import type { Paciente } from "../types/pacientes";
 
 interface AlertasActivasProps {
   alertas: Alerta[];
   pacientes: Paciente[];
+  tiposSignosVitales: TipoSignoVital[];
+}
+
+// Traducción rápida de nombre técnico a nombre legible, para mostrar en la UI.
+function nombreLegible(nombreTecnico: string): string {
+  const texto = nombreTecnico.replace(/_/g, " ");
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
 const SEGUNDOS_PARA_ESCALAR = 45;
 
-function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
+function AlertasActivas({
+  alertas,
+  pacientes,
+  tiposSignosVitales,
+}: AlertasActivasProps) {
   const [ahora, setAhora] = useState(() => Date.now());
   useEffect(() => {
     const intervalo = setInterval(() => setAhora(Date.now()), 5000);
@@ -60,6 +71,9 @@ function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
       >
         {alertas.map((alerta) => {
           const paciente = pacientes.find((p) => p.id === alerta.paciente_id);
+          const tipoSigno = tiposSignosVitales.find(
+            (t) => t.id === alerta.tipo_signo_id,
+          );
           const segundosSinAtender =
             (ahora - new Date(alerta.creada_en).getTime()) / 1000;
           const estaEscalada = segundosSinAtender >= SEGUNDOS_PARA_ESCALAR;
@@ -116,7 +130,22 @@ function AlertasActivas({ alertas, pacientes }: AlertasActivasProps) {
                     : "Paciente"}
                 </span>
                 {" — "}
-                {alerta.severidad} ({alerta.valor_detectado ?? "?"})
+                {alerta.severidad}
+                {tipoSigno && ` — ${nombreLegible(tipoSigno.nombre)}`}
+                {" ("}
+                {alerta.valor_detectado ?? "?"}
+                {tipoSigno && ` ${tipoSigno.unidad}`}
+                {")"}
+                {alerta.workflow_id_temporal === null && (
+                  <span
+                    style={{
+                      marginLeft: "6px",
+                      fontFamily: "var(--mono)",
+                      fontSize: "10.5px",
+                      color: "var(--text-muted)",
+                    }}
+                  ></span>
+                )}
               </Link>
             </li>
           );
