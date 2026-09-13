@@ -73,7 +73,10 @@ async def crear_paciente(db: AsyncSession, datos: PacienteCrear) -> Paciente:
     # que se generaron ahí (fecha_ingreso, creado_en, actualizado_en, estado).
     # Como expire_on_commit=False está seteado en el engine, esto NO pisa
     # la relación digital_twin que ya dejamos cargada arriba.
-    await db.refresh(nuevo_paciente)
+    await db.refresh(
+        nuevo_paciente,
+        attribute_names=["fecha_ingreso", "estado", "creado_en", "actualizado_en"],
+    )
     return nuevo_paciente
 
 
@@ -163,7 +166,7 @@ async def actualizar_paciente(
 
     # paciente.digital_twin ya venía cargado desde obtener_paciente() de
     # arriba, y expire_on_commit=False evita que este refresh lo descarte.
-    await db.refresh(paciente)
+    await db.refresh(paciente, attribute_names=["actualizado_en"])
     return paciente
 
 
@@ -184,5 +187,5 @@ async def dar_de_alta_paciente(db: AsyncSession, paciente_id: uuid.UUID) -> Paci
     paciente.fecha_alta = datetime.now(timezone.utc)
 
     await db.commit()
-    await db.refresh(paciente)
+    await db.refresh(paciente, attribute_names=["actualizado_en"])
     return paciente
