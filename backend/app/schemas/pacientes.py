@@ -63,6 +63,7 @@ class PacienteRespuesta(BaseModel):
     documento: str
     fecha_nacimiento: date
     estado: str
+    genero: str | None
     sala: str | None
     cama: str | None
     fecha_ingreso: datetime

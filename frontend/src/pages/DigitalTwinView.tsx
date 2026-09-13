@@ -10,9 +10,13 @@ import VitalSignCard from "../components/VitalSignCard";
 import VitalSignChart from "../components/VitalSignChart";
 import EventoTimeline from "../components/EventoTimeline";
 import IntervencionModal from "../components/IntervencionModal";
+import PacienteFormModal from "../components/PacienteFormModal";
+import ConfirmModal from "../components/ConfirmModal";
+import { usePacienteForm } from "../hooks/usePacienteForm";
 import { BORDE_SEVERIDAD, GLOW_SEVERIDAD } from "../constants/severidad";
 import type { SignoVital } from "../types/clinico";
 import type { IntervencionRespuesta } from "../types/intervencion";
+import type { Paciente } from "../types/pacientes";
 
 const VENTANA_GRAFICO_MS = 2 * 60 * 60 * 1000; // gráfico de 24 horas
 
@@ -30,8 +34,11 @@ function DigitalTwinView() {
   const tiposSignosVitales = useTiposSignosVitales();
   const eventos = useEventos(pacienteId);
   const alertas = useAlertas();
+  const { darDeAltaPaciente, enviando: dandoDeAlta } = usePacienteForm();
 
   const [modalAbierto, setModalAbierto] = useState(false);
+  const [modalEdicionAbierto, setModalEdicionAbierto] = useState(false);
+  const [modalAltaAbierto, setModalAltaAbierto] = useState(false);
   // Optimista: hasta que la Fase 5 conecte el WS "alerta_resuelta", así
   // ocultamos el botón apenas se confirma la intervención sin esperar
   // a que el backend termine de resolver la alerta de forma asíncrona.
@@ -58,6 +65,17 @@ function DigitalTwinView() {
       return siguientes;
     });
     setModalAbierto(false);
+  }
+
+  function manejarExitoEdicion(_resultado: Paciente) {
+    setModalEdicionAbierto(false);
+    paciente.recargar();
+  }
+
+  async function manejarDarDeAlta() {
+    const resultado = await darDeAltaPaciente(pacienteId);
+    setModalAltaAbierto(false);
+    if (resultado) paciente.recargar();
   }
 
   // Agrupamos el historial plano por tipo_signo_id: sin esto no hay
@@ -156,6 +174,38 @@ function DigitalTwinView() {
               }}
             >
               Intervenir alerta activa
+            </button>
+          )}
+          <button
+            onClick={() => setModalEdicionAbierto(true)}
+            style={{
+              padding: "9px 16px",
+              borderRadius: 9,
+              border: "1px solid var(--border)",
+              background: "transparent",
+              color: "var(--text-h)",
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Editar
+          </button>
+          {paciente.data.estado === "internado" && (
+            <button
+              onClick={() => setModalAltaAbierto(true)}
+              style={{
+                padding: "9px 16px",
+                borderRadius: 9,
+                border: "1px solid var(--border-alta)",
+                background: "var(--tint-alta)",
+                color: "var(--color-alta)",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Dar de alta
             </button>
           )}
           <SeveridadBadge severidad={severidad} />
@@ -285,6 +335,25 @@ function DigitalTwinView() {
           onExito={manejarExitoIntervencion}
         />
       )}
+
+      <PacienteFormModal
+        abierto={modalEdicionAbierto}
+        modo="editar"
+        paciente={paciente.data}
+        onCerrar={() => setModalEdicionAbierto(false)}
+        onExito={manejarExitoEdicion}
+      />
+
+      <ConfirmModal
+        abierto={modalAltaAbierto}
+        variante="alta"
+        titulo="Dar de alta al paciente"
+        mensaje={`¿Dar de alta a ${paciente.data.nombre} ${paciente.data.apellido}? Dejará de aparecer en el Dashboard de pacientes internados.`}
+        textoAceptar="Dar de alta"
+        procesando={dandoDeAlta}
+        onAceptar={manejarDarDeAlta}
+        onCancelar={() => setModalAltaAbierto(false)}
+      />
     </div>
   );
 }
