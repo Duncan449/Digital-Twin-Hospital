@@ -14,11 +14,8 @@ CANAL_EVENTOS = "eventos_pacientes"
 
 async def publicar_evento(paciente_id: str, tipo: str, data: dict[str, Any]) -> None:
     """
-    Este es el ÚNICO punto de contacto
-    entre la lógica del programa (venga de un endpoint de FastAPI o de una
-    Activity de Temporal corriendo en el Worker) y los
-    WebSockets. Publican acá y Redis se encarga de avisarle a quien esté
-    escuchando (el WS Gateway, definido en gateway.py).
+    Este es el ÚNICO punto de contacto entre la lógica del programa y los WebSockets.
+    Publican acá y Redis se encarga de avisarle a quien esté escuchando
     """
     cliente_redis = await get_redis_client()
     mensaje = {

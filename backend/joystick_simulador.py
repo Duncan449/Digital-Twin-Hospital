@@ -8,13 +8,7 @@ específico. Cada cierto intervalo, si el valor cambió, lo manda por
 HTTP al mismo endpoint que usa el simulador normal:
     POST /pacientes/{id}/signos-vitales
 
-Por qué funciona así:
-Este script es un CLIENTE más de tu API, igual que Postman o el
-simulador de interpolación lineal que ya tenían. No sabe nada de
-Temporal, WebSockets ni el motor de detección. El joystick solo decide 
-QUÉ valor mandar y CUÁNDO.
-
-⚠️ IMPORTANTE SOBRE LOS ÍNDICES:
+IMPORTANTE SOBRE LOS ÍNDICES:
 Los números de BOTON_* y EJE_* de acá abajo son los más comunes para
 un control de Xbox en Windows con XInput. Si tu gamepad es distinto
 (PlayStation, genérico, o estás en Linux/Mac), estos índices pueden
@@ -33,7 +27,7 @@ import pygame
 
 from app.config.redis_client import CANAL_COORDINACION_SIMULADOR, get_redis_client_sincrono
 
-# CONFIGURACIÓN -- lo que más probablemente necesites ajustar
+# CONFIGURACIÓN 
 
 BASE_URL = "http://localhost:8000"
 
@@ -144,7 +138,7 @@ def _publicar_coordinacion(
     Le avisa a monitor_continuo.py que pause o reanude el control
     automático de este paciente, por un canal de Redis aparte del de
     eventos clínicos. Best-effort a propósito: si Redis no está
-    levantado, el joystick tiene que poder seguir funcionando igual --
+    levantado, el joystick tiene que poder seguir funcionando igual
     solo se pierde la coordinación con el otro script, no la simulación.
     """
     try:
