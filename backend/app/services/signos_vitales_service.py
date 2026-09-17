@@ -99,9 +99,6 @@ async def registrar_signo_vital(
 
 
 async def _publicar_evento_seguro(paciente_id: str, tipo: str, data: dict) -> None:
-    """
-    Wrapper de publicar_evento() que aísla los fallos de Redis
-    """
     try:
         await publicar_evento(paciente_id=paciente_id, tipo=tipo, data=data)
     except Exception as error:

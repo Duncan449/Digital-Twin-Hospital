@@ -73,7 +73,8 @@ class EstadoPar:
 
 def _arrancar_deterioro(par: EstadoPar) -> None:
     '''
-    Cambia el estado a "deteriorando" y define un objetivo fuera del rango normal, hacia arriba o hacia abajo. Se llama desde el loop de cada par
+    Cambia el estado a "deteriorando" y define un objetivo fuera del rango normal,
+    hacia arriba o hacia abajo. Se llama desde el loop de cada par
     (espontáneo) o desde el listener de comandos (manual).'''
 
     limite_max = LIMITE_FISICO_MAX.get(par.tipo_signo_nombre)

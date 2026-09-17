@@ -10,16 +10,7 @@ router = APIRouter(tags=["WebSockets"])
 
 class ConnectionManager:
     """
-    Mantiene el registro de conexiones WebSocket abiertas, en dos niveles:
-
-    - Por paciente (_conexiones): para clientes que solo quieren los
-      eventos de UN paciente puntual.
-    - Global (_conexiones_globales): para clientes que quieren enterarse
-      de los eventos de TODOS los pacientes a la vez (ej. el Dashboard,
-      que lista alertas de todo el hospital, no de uno solo).
-
-    Un mismo paciente puede tener varias conexiones abiertas a la vez,
-    por eso guardamos un set de conexiones por paciente_id, no una sola.
+    Mantiene el registro de conexiones WebSocket abiertas tanto por paciente_id como globales (Dashboard). 
     """
 
     def __init__(self) -> None:
@@ -47,10 +38,9 @@ class ConnectionManager:
     async def enviar_a_paciente(self, paciente_id: str, mensaje: dict) -> None:
         conexiones = self._conexiones.get(paciente_id)
         if not conexiones:
-            return  # Nadie mirando este paciente ahora mismo -- no pasa nada.
-
-        # Copiamos a una lista antes de iterar: si una conexión falla y
-        # la sacamos DENTRO del loop, no queremos modificar el set
+            return  
+        # Copiamos a una lista antes de iterar, si una conexión falla y
+        # la sacamos dentro del loop, no queremos modificar el set
         # mientras lo estamos recorriendo.
         for websocket in list(conexiones):
             try:
@@ -59,12 +49,6 @@ class ConnectionManager:
                 self.desconectar(paciente_id, websocket)
     
     async def enviar_a_todos(self, mensaje: dict) -> None:
-        """
-        Igual que enviar_a_paciente, pero para las conexiones globales
-        (Dashboard). Se llama SIEMPRE, sin importar de qué paciente sea
-        el evento -- el filtro por paciente_id, si hace falta, lo hace
-        el propio frontend con el mensaje ya recibido.
-        """
         for websocket in list(self._conexiones_globales):
             try:
                 await websocket.send_json(mensaje)
@@ -78,14 +62,7 @@ manager = ConnectionManager()
 @router.websocket("/ws/pacientes/{paciente_id}")
 async def websocket_paciente_endpoint(websocket: WebSocket, paciente_id: str):
     """
-    Endpoint que abre el frontend para recibir 
-    en vivo los eventos de UN paciente puntual.
-
-    Es de solo lectura desde el punto de vista del cliente: no esperamos
-    comandos del navegador en este MVP. El 'receive_text()' dentro del
-    while solo existe para que FastAPI detecte cuándo el cliente cierra
-    la pestaña (WebSocketDisconnect) -- sin ese await, la conexión
-    quedaría "colgada" en el manager para siempre.
+    Endpoint que abre el frontend para recibir en vivo los eventos de un paciente puntual.
     """
     await manager.conectar(paciente_id, websocket)
     try:
@@ -97,11 +74,8 @@ async def websocket_paciente_endpoint(websocket: WebSocket, paciente_id: str):
 @router.websocket("/ws/eventos")
 async def websocket_eventos_globales_endpoint(websocket: WebSocket):
     """
-    Igual que websocket_paciente_endpoint, pero sin filtrar por
-    paciente: recibe los eventos de TODOS los pacientes. Pensado para el
-    Dashboard, que necesita enterarse de alertas nuevas sin importar de 
-    qué paciente vengan, y también reusado por la vista de un paciente 
-    individual (que filtra del lado del cliente por paciente_id).
+    Endpoint que abre el frontend para recibir en vivo todos los eventos de todos los pacientes.
+    Utilizado por el Dashboard de la clínica, para ver en tiempo real qué está pasando con todos los pacientes.
     """
     await manager.conectar_global(websocket)
     try:
@@ -113,15 +87,9 @@ async def websocket_eventos_globales_endpoint(websocket: WebSocket):
 
 async def escuchar_eventos_redis() -> None:
     """
-    Tarea de fondo que arranca UNA vez por proceso de FastAPI 
-    ('lifespan' en main.py). Se suscribe al canal de Redis y, por cada
-    mensaje que llega lo reenvía a las conexiones WS del paciente 
-    correspondiente.
-
-    El try/except envuelve todo el loop a propósito: 'create_task' no
-    propaga excepciones a ningún lado visible si nadie hace 'await'
-    sobre la tarea, así que sin este bloque, un error de conexión a
-    Redis quedaría completamente silencioso en producción.
+    Tarea de fondo que arranca una vez por proceso de FastAPI 
+    Se suscribe al canal de Redis y, por cada mensaje que llega
+    lo reenvía a las conexiones WS del paciente correspondiente.
     """
     try:
         cliente_redis = await get_redis_client()
