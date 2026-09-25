@@ -1,8 +1,6 @@
 """
-Prototipo conceptual de Gateway de Ingesta
+Prototipo de un gateway de ingesta de datos de sensores reales ESP32 + MAX30102.
 
-Traduce mensajes MQTT de un sensor físico (ESP32 + MAX30102) al mismo
-formato que ya usan los simuladores.
 """
 
 import json
@@ -32,8 +30,7 @@ def _es_valor_fisicamente_plausible(valor: float) -> bool:
     Filtro mínimo antes de mandar el dato: un sensor real puede mandar
     0 (o un valor negativo, por un glitch de lectura) por una
     desconexión momentánea del cable I2C o del WiFi, no porque el
-    paciente tenga esa medición. Esto NO reemplaza a
-    evaluar_severidad() -- es un filtro técnico, no clínico.
+    paciente tenga esa medición.
     """
     return valor > 0
 

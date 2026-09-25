@@ -75,7 +75,6 @@ async def websocket_paciente_endpoint(websocket: WebSocket, paciente_id: str):
 async def websocket_eventos_globales_endpoint(websocket: WebSocket):
     """
     Endpoint que abre el frontend para recibir en vivo todos los eventos de todos los pacientes.
-    Utilizado por el Dashboard de la clínica, para ver en tiempo real qué está pasando con todos los pacientes.
     """
     await manager.conectar_global(websocket)
     try:
@@ -87,7 +86,7 @@ async def websocket_eventos_globales_endpoint(websocket: WebSocket):
 
 async def escuchar_eventos_redis() -> None:
     """
-    Tarea de fondo que arranca una vez por proceso de FastAPI 
+    Tarea de fondo que arranca una vez al iniciar el servidor. 
     Se suscribe al canal de Redis y, por cada mensaje que llega
     lo reenvía a las conexiones WS del paciente correspondiente.
     """

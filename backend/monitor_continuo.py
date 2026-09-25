@@ -38,14 +38,14 @@ from app.websockets.eventos import CANAL_EVENTOS
 BASE_URL = "http://localhost:8000"
 
 # --- Parámetros ajustables de la simulación ---
-INTERVALO_TICK_SEG = 15  # cada cuánto se postea una medición nueva, por par
+INTERVALO_TICK_SEG = 5  # cada cuánto se postea una medición nueva, por par
 FRACCION_RUIDO_NORMAL = 0.12  # +/- sobre el ancho del rango normal, en estado "normal"
 FRACCION_AVANCE_DETERIORO = (
     0.35  # qué tan rápido camina hacia el objetivo (proporcional)
 )
-PROBABILIDAD_DETERIORO_ESPONTANEO = 0.003  # por tick, solo en estado "normal"
+PROBABILIDAD_DETERIORO_ESPONTANEO = 0.001  # por tick, solo en estado "normal"
 PAUSA_POST_RESOLUCION_SEG = (
-    95  # margen para no pisar la estabilización automática de Temporal
+    80  # margen para no pisar la estabilización automática de Temporal
 )
 LIMITE_FISICO_MAX = {
     # Saturación de oxígeno es un porcentaje: no tiene sentido clínico
