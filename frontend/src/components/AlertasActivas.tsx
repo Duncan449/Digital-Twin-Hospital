@@ -15,7 +15,7 @@ function nombreLegible(nombreTecnico: string): string {
   return texto.charAt(0).toUpperCase() + texto.slice(1);
 }
 
-const SEGUNDOS_PARA_ESCALAR = 45;
+const SEGUNDOS_PARA_ESCALAR = 15;
 
 function AlertasActivas({
   alertas,
@@ -24,7 +24,7 @@ function AlertasActivas({
 }: AlertasActivasProps) {
   const [ahora, setAhora] = useState(() => Date.now());
   useEffect(() => {
-    const intervalo = setInterval(() => setAhora(Date.now()), 5000);
+    const intervalo = setInterval(() => setAhora(Date.now()), 1000);
     return () => clearInterval(intervalo);
   }, []);
 

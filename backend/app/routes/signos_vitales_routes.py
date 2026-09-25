@@ -30,11 +30,7 @@ async def registrar_signo_vital_endpoint(
     datos: SignoVitalCrear,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Registra una medición y evalúa su severidad con el motor de
-    detección. Genera un Evento siempre, y una Alerta si la severidad
-    es "precaucion" o "critica".
-    """
+
     resultado = await registrar_signo_vital(db, paciente_id, datos)
     return SignoVitalRegistradoRespuesta(
         signo_vital=SignoVitalRespuesta.model_validate(resultado["signo_vital"]),

@@ -31,12 +31,12 @@ class SaludoWorkflow:
 
 
 # Intervalo corto a modo de prueba
-INTERVALO_ESCALADO = timedelta(seconds=45)
+INTERVALO_ESCALADO = timedelta(seconds=15)
 
-# Pasos y cadencia de la estabilización post-intervención. 6 x 15s = ~90s,
-# debe entrar dentro de VENTANA_SUPRESION_SEG (deteccion.py, 110s).
+# Pasos y cadencia de la estabilización post-intervención.
+# debe entrar dentro de VENTANA_SUPRESION_SEG (deteccion.py, 37s).
 PASOS_ESTABILIZACION = 6
-INTERVALO_ESTABILIZACION_SEG = 15
+INTERVALO_ESTABILIZACION_SEG = 5
 
 @workflow.defn
 class AlertaWorkflow:
